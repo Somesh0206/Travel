@@ -108,6 +108,7 @@ export default function Offline() {
     } else {
       setOfflinePack(fallbackPack);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const downloadPack = async () => {

@@ -61,6 +61,7 @@ export default function DriverDashboard() {
     loadData();
     const interval = setInterval(loadData, 8000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRouteId]);
 
   const handleRouteSelect = (route) => {
