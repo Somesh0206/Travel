@@ -1,0 +1,191 @@
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap");
+@import url("https://unpkg.com/leaflet@1.9.4/dist/leaflet.css");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --mova-bg: #0a0a0e;
+  --mova-surface: #12121a;
+  --mova-elevated: #1e1e28;
+  --mova-primary: #00e5ff;
+  --mova-primary-hover: #00b8cc;
+  --mova-accent: #b24cff;
+  --mova-danger: #ff3b30;
+  --mova-success: #34c759;
+  --mova-text: #ffffff;
+  --mova-text-muted: #a0a0b0;
+}
+
+.light {
+  --mova-bg: #f6f7fb;
+  --mova-surface: #ffffff;
+  --mova-elevated: #ffffff;
+  --mova-text: #0a0a14;
+  --mova-text-muted: #52526a;
+}
+
+@layer base {
+  :root {
+    --background: 240 20% 5%;
+    --foreground: 0 0% 100%;
+    --card: 240 15% 8%;
+    --card-foreground: 0 0% 100%;
+    --popover: 240 15% 10%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 188 100% 50%;
+    --primary-foreground: 240 20% 5%;
+    --secondary: 240 10% 14%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 240 10% 14%;
+    --muted-foreground: 240 5% 66%;
+    --accent: 274 100% 65%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 4 100% 59%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 10% 20%;
+    --input: 240 10% 14%;
+    --ring: 188 100% 50%;
+    --radius: 0.85rem;
+  }
+  .light {
+    --background: 220 20% 97%;
+    --foreground: 240 20% 6%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 20% 6%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 20% 6%;
+    --primary: 190 100% 34%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 15% 92%;
+    --secondary-foreground: 240 20% 10%;
+    --muted: 220 15% 92%;
+    --muted-foreground: 240 8% 38%;
+    --accent: 274 60% 45%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 4 82% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 15% 85%;
+    --input: 220 15% 92%;
+    --ring: 190 100% 34%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    background: var(--mova-bg);
+    color: var(--mova-text);
+    font-family: "IBM Plex Sans", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  h1, h2, h3, h4 {
+    font-family: "Outfit", sans-serif;
+    letter-spacing: -0.02em;
+  }
+}
+
+.mova-hero-grid {
+  background-image:
+    radial-gradient(1200px 400px at 10% -20%, rgba(0, 229, 255, 0.14), transparent 60%),
+    radial-gradient(900px 400px at 100% 0%, rgba(178, 76, 255, 0.14), transparent 60%),
+    linear-gradient(180deg, #0a0a0e 0%, #10101a 100%);
+}
+.light .mova-hero-grid {
+  background-image:
+    radial-gradient(1200px 400px at 10% -20%, rgba(0, 154, 178, 0.10), transparent 60%),
+    radial-gradient(900px 400px at 100% 0%, rgba(120, 40, 200, 0.10), transparent 60%),
+    linear-gradient(180deg, #f6f7fb 0%, #eef0f7 100%);
+}
+
+.mova-glass {
+  background: rgba(18, 18, 26, 0.75);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.light .mova-glass {
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(20, 20, 40, 0.08);
+}
+
+.mova-noise {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E");
+  opacity: 0.05;
+  pointer-events: none;
+}
+
+.sos-pulse {
+  box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.55);
+  animation: sos-pulse 1.8s infinite;
+}
+@keyframes sos-pulse {
+  0%   { box-shadow: 0 0 0 0    rgba(255, 59, 48, 0.55); }
+  70%  { box-shadow: 0 0 0 24px rgba(255, 59, 48, 0);    }
+  100% { box-shadow: 0 0 0 0    rgba(255, 59, 48, 0);    }
+}
+
+.pill-btn {
+  border-radius: 999px;
+  transition: transform 0.15s ease, background-color 0.2s ease, color 0.2s ease;
+}
+.pill-btn:hover { transform: translateY(-1px); }
+
+.route-line {
+  filter: drop-shadow(0 0 4px rgba(0, 229, 255, 0.55));
+}
+
+/* Leaflet dark tweak - keep panes below shadcn overlays */
+.leaflet-container {
+  background: #0a0a0e;
+  font-family: "IBM Plex Sans", sans-serif;
+  isolation: isolate;
+}
+.leaflet-pane,
+.leaflet-top,
+.leaflet-bottom,
+.leaflet-control { z-index: 1 !important; }
+.leaflet-tile-pane { z-index: 1 !important; }
+.leaflet-overlay-pane { z-index: 2 !important; }
+.leaflet-marker-pane { z-index: 3 !important; }
+.leaflet-tooltip-pane { z-index: 4 !important; }
+.leaflet-popup-pane { z-index: 5 !important; }
+.light .leaflet-container { background: #e7ebf3; }
+.leaflet-popup-content-wrapper {
+  background: rgba(18, 18, 26, 0.92);
+  color: #fff;
+  border: 1px solid rgba(0, 229, 255, 0.25);
+}
+.leaflet-popup-tip { background: rgba(18, 18, 26, 0.92); }
+.light .leaflet-popup-content-wrapper { background: #fff; color: #0a0a14; border-color: rgba(0,154,178,0.3); }
+.light .leaflet-popup-tip { background: #fff; }
+
+.stagger-in > * {
+  opacity: 0;
+  transform: translateY(6px);
+  animation: staggerIn 0.5s ease forwards;
+}
+.stagger-in > *:nth-child(1) { animation-delay: 0.05s; }
+.stagger-in > *:nth-child(2) { animation-delay: 0.12s; }
+.stagger-in > *:nth-child(3) { animation-delay: 0.19s; }
+.stagger-in > *:nth-child(4) { animation-delay: 0.26s; }
+.stagger-in > *:nth-child(5) { animation-delay: 0.33s; }
+.stagger-in > *:nth-child(6) { animation-delay: 0.40s; }
+
+@keyframes staggerIn {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stagger-in > *, .sos-pulse { animation: none; }
+}

@@ -1,0 +1,129 @@
+{
+  "project_name": "MOVA",
+  "app_type": "hybrid_fullstack",
+  "typography": {
+    "headings": {
+      "fontFamily": "Outfit, sans-serif",
+      "weights": [400, 700],
+      "sizes": {
+        "h1": "text-4xl sm:text-5xl lg:text-6xl tracking-tighter",
+        "h2": "text-2xl sm:text-3xl lg:text-4xl tracking-tight",
+        "h3": "text-xl sm:text-2xl tracking-tight",
+        "h4": "text-lg sm:text-xl tracking-tight"
+      },
+      "rules": "Never use Inter for headings. Keep tight letter spacing. Ensure high contrast for readability."
+    },
+    "body": {
+      "fontFamily": "IBM Plex Sans, sans-serif",
+      "weights": [400, 500, 600],
+      "sizes": {
+        "base": "text-base leading-relaxed",
+        "small": "text-sm",
+        "xs": "text-xs uppercase tracking-[0.2em]"
+      }
+    }
+  },
+  "colors": {
+    "archetype": "High-Visibility Accessible Dark Theme (Archetype 4/7 Hybrid)",
+    "palette": {
+      "background_dark": "#0A0A0E",
+      "surface_dark": "#12121A",
+      "surface_elevated": "#1E1E28",
+      "primary": "#00E5FF",
+      "primary_hover": "#00B8CC",
+      "accent_purple": "#B24CFF",
+      "danger_sos": "#FF3B30",
+      "danger_hover": "#CC2F26",
+      "success": "#34C759",
+      "text_primary": "#FFFFFF",
+      "text_secondary": "#A0A0B0"
+    },
+    "rules": "Avoid pure black (#000000). Use #0A0A0E. For dark mode gradients, use subtle #0A0A0E to #1E1E28 shifts. Ensure WCAG AA 4.5:1 contrast ratios. Never use transparent backgrounds on headers/dropdowns."
+  },
+  "visual_enhancers": {
+    "surfaces": "Use Glassmorphism for sticky headers and modals (backdrop-blur-xl bg-[#0A0A0E]/80 border-b border-white/10). Flat Solid for dashboard cards.",
+    "borders": "1px solid borders in white/10 or primary/20 for interactive elements.",
+    "gradients": "Do not use generic full-screen color gradients. Colorful gradients (Purple to Cyan) should only be used in active routes on the map or subtle text highlights.",
+    "shadows": "Diffuse ambient shadows for elevated cards. Avoid muddy dropshadows."
+  },
+  "component_name": {
+    "forms": "Shadcn UI Input, Select, Form. Highly customized for high contrast.",
+    "cards": "Shadcn UI Card. No heavy shadows, rely on 1px border.",
+    "buttons": "Pill-shaped. Primary actions use #00E5FF. SOS Button MUST be #FF3B30 with pulsing animation.",
+    "dialogs": "Shadcn Dialog for Safety Check-ins and Emergency Contacts.",
+    "toasts": "Sonner (for Route changes, offline notifications)."
+  },
+  "grids": {
+    "dashboard_grid": "Dense grid layout (grid-cols-1 md:grid-cols-3 lg:grid-cols-4). gap-4 or gap-6. Stretch children. Left sidebar for admin.",
+    "user_app_grid": "Mobile-first responsive grids. Map spans full screen behind content, or top half, with bottom sheets.",
+    "spacing_scale": "p-2, p-4, p-6, p-8. Use generous padding inside containers."
+  },
+  "layouts": {
+    "user_app": "Top sticky header with Greeting & Profile. Main area: Leaflet Map (KIIT Lake/Bhubaneswar). Bottom sheet: Route inputs (D1, D2), Accessible Route toggles, SOS FAB.",
+    "driver_dashboard": "Sidebar nav, top KPI cards, Main Map view, Right panel for crowding/delay reports.",
+    "admin_dashboard": "Protected route. Sidebar. Main area: Large Live Map tracking fleet + Table of reported bugs/emergencies."
+  },
+  "motion": {
+    "transitions": "Specific transitions only. transition: transform 0.2s ease, opacity 0.2s ease.",
+    "hover_states": "Explicit hover states (hover:bg-[#00B8CC] hover:text-white).",
+    "animations": "SOS Button pulses (animate-pulse). Map markers stagger-fade in. Greeting slide-down. Respect prefers-reduced-motion."
+  },
+  "accessibility": {
+    "contrast": "APCA & WCAG AA standards. Text on map needs dark semi-transparent backdrop for contrast.",
+    "voice_input": "Include a microphone icon button for voice-to-text in destination inputs.",
+    "focus_states": "focus:ring-2 focus:ring-[#00E5FF] focus:outline-none.",
+    "aria": "Use aria-labels for map markers, SOS button, and Voice Input."
+  },
+  "media": {
+    "icons": "lucide-react for UI icons (MapPin, Mic, AlertTriangle, ShieldAlert, Accessibility).",
+    "map": "React-Leaflet with Carto Dark Matter tiles for dark mode map. Must function offline gracefully showing 'no satellite connection'."
+  },
+  "3d_libraries": {
+    "decision": "Not recommended for this utility app to keep performance high and credit usage low. Use 2D Maps (react-leaflet)."
+  },
+  "image_urls": [
+    {
+      "url": "https://images.pexels.com/photos/38251244/pexels-photo-38251244.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "category": "backgrounds",
+      "description": "Abstract Topographic Map lines for Hero Section or Auth screens background."
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1620207418302-439b387441b0?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Njd8MHwxfHNlYXJjaHwzfHxhYnN0cmFjdCUyMGRhcmslMjBtb2RlJTIwZ3JhZGllbnQlMjBtYXB8ZW58MHx8fHwxNzg3MjkyMTA3fDA&ixlib=rb-4.1.0&q=85",
+      "category": "backgrounds",
+      "description": "Purple and pink flowing wallpaper for offline mode overlay."
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1686051489138-65da1afc4c33?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODh8MHwxfHNlYXJjaHwxfHxhY2Nlc3NpYmxlJTIwcHVibGljJTIwdHJhbnNwb3J0JTIwYnVzfGVufDB8fHx8MTc4NzI5MjEwN3ww&ixlib=rb-4.1.0&q=85",
+      "category": "marketing",
+      "description": "People sitting next to a bus, useful for the landing page or about section."
+    }
+  ],
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "You tend to converge toward generic outputs. Avoid this: make creative, distinctive frontends that surprise and delight.",
+    "Do not use dark colors as gradients. Dark colors look good when used independently.",
+    "Don't make generic centered layouts. Create depth through layered design elements with z-index hierarchy.",
+    "Use glass-morphism effects with backdrop filters (12-24px blur). NEVER use completely transparent backgrounds for headers/dropdowns.",
+    "You MUST NOT apply universal transition. Eg: transition: all. Always add transitions for specific interactive elements.",
+    "You MUST NOT center align the app container, ie do not add .App { text-align: center; }.",
+    "Always use modern button styles like pill-shaped, or sharp button with interaction animations & color relevant to the app style.",
+    "NEVER use AI assistant Emoji characters like 🤖🧠💭💡🔮🎯 etc for icons. Use lucide-react.",
+    "Every interaction needs micro-animations - hover states, transitions, entrance animations.",
+    "Use 2-3x more spacing than feels comfortable.",
+    "All interactive and key informational elements MUST include a data-testid attribute. Example: data-testid='sos-button'",
+    "Toast notifications MUST use sonner.",
+    "The app MUST have a dark mode toggle and support color gradient themes subtly.",
+    "For the Map, ensure it centers on KIIT Lake / Bhubaneswar region coordinates (approx 20.35, 85.81).",
+    "Offline map fallback should display the text 'no satellite connection' prominently.",
+    "Create and use .js/.jsx files only, NO .tsx/.ts files.",
+    "Ensure 'GENERAL UI UX DESIGN GUIDELINES' principles are maintained: robust contrast, clear hierarchical typography, and accessible interactive elements."
+  ],
+  "instructions_to_main_agent": {
+    "project_setup": "Set up a hybrid app with React Router. Routes: / (User App), /driver (Driver Dashboard), /admin (Admin Dashboard). Use .js/.jsx.",
+    "map_implementation": "Use react-leaflet. Display markers for D1 and D2 destinations, Police Stations, and Live location. Make sure map tiles have a dark mode variant.",
+    "sos_feature": "Implement a floating action button (FAB) for SOS. Clicking it should trigger a location sharing flow and alert via toast.",
+    "accessibility_features": "Include voice input simulation (button that fills input), readable fonts, high contrast.",
+    "safety_checkin": "Implement a modal (Shadcn Dialog) for Safety Check-ins asking for 'Name' and 'Alternate Phone Number'.",
+    "greeting": "Display a personalized greeting on login/logout.",
+    "bug_report": "Add a form to submit crowding/delays or bugs, linked to the Admin dashboard view."
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "summary": "Frontend-only validation of MOVA iteration 2 (fare pricing + destination helpers + login admin hint). All 3 requested features PASS. Fare card hidden initially; renders with correct ₹68 after planning KIIT Square → Kalinga Hospital (5.36 km) with wheelchair+night on; fare-amount is positive integer; fare-from='KIIT Square' fare-to='Kalinga Hospital'. Fare recomputes correctly when toggles change: initial ₹63 (wheelchair on) → ₹73 with night-safe on → ₹68 after wheelchair off (validates +₹10 night, −₹5 removing accessible). Datalist #stops-list has all 8 stop options and both d1/d2 inputs have list='stops-list'. Six clickable stop-chips render (chip-s1..chip-s6); first click fills D1, second fills D2. Suggested-route cards each show route-fare-<id> badge (r1=₹53, r3=₹60, r4=₹109) with accessible+wheelchair filters applied. Login page shows admin-hint panel with 'Admin console (locked)', 'Only authorised staff can open /admin', and demo credentials admin@mova.app / mova@admin123. Admin flow end-to-end verified: non-admin visiting /admin correctly redirects to /; admin@mova.app login redirects to /admin and MOVA Command Center renders admin-badge, all 4 KPIs (kpi-users=5, kpi-sos=4, kpi-bugs=3, kpi-police=3), admin-map-card, admin-tabs, and tab-sos/tab-bugs/tab-users are all clickable and switch panels. Registration + auto-open Safety Check-in dialog still function (used to create test user). Only console errors observed are the expected 401 on /api/auth/me during guest bootstrap.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_mova_api.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Home.jsx computeFare/distKm helpers are pure and correctly memoised via useMemo — good.",
+    "Chip-fill logic uses `!d1Query` — after both fields have values, further chip clicks silently overwrite D2 which could confuse power users; consider round-robin or an explicit 'clear' affordance.",
+    "route-fare computation duplicates distKm summation between journey memo and suggested map — minor DRY opportunity to extract routeKm(route, stops) helper.",
+    "AdminDashboard tab-users list not paginated (already noted in iter1); not blocking for MVP."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (skipped per request)", "frontend": "100%"},
+  "test_credentials": "Admin: admin@mova.app / mova@admin123 (verified). Registered ephemeral user test<ts>@mova.app / test1234.",
+  "seed_data_creation": "Registered 2 ephemeral users during this run (fare tester + non-admin redirect tester). Existing SOS/bug data from iter1 still visible in admin console.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Fare card requires waiting for /transit/stops to load before clicking plan-route-btn (findStop() matches on cached stops). For admin dashboard, always wait for [data-testid='admin-tabs'] after /admin navigation — KPIs/tabs render after location/sos/bugs fetches. Chip testids follow chip-s1..s6 (first 6 stops).",
+  "rca of the issue": "User's original complaint 'admin page not working' was a discoverability/onboarding issue, not a functional bug. Iter1 already verified /admin works with correct credentials; iter2 adds an admin-hint panel on /login that clearly states the page is locked and provides demo credentials, resolving the perceived issue. Actual admin routing (RequireAdmin redirect for non-admins + admin redirect to /admin on login) confirmed working end-to-end."
+}
