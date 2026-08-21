@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import Header from "@/components/Header";
 import MapView from "@/components/MapView";
 import SOSButton from "@/components/SOSButton";
@@ -17,7 +17,7 @@ import { toast } from "sonner";
 import {
   Accessibility, Navigation, MapPin, Clock, Bus, ShieldPlus,
   WifiOff, IndianRupee, Route, ExternalLink, Car, Footprints,
-  Building2, Plane, Train, Globe, MousePointerClick, CornerUpRight
+  Building2, Plane, Train, Globe, MousePointerClick, CornerUpRight, Search
 } from "lucide-react";
 
 // Haversine fallback distance in km
@@ -54,6 +54,12 @@ export default function Home() {
   const [d2Query, setD2Query] = useState("");
   const [d1, setD1] = useState(null);
   const [d2, setD2] = useState(null);
+
+  // Suggestion Dropdown states (Never auto-writes as user types)
+  const [d1Suggestions, setD1Suggestions] = useState([]);
+  const [d2Suggestions, setD2Suggestions] = useState([]);
+  const [showD1Menu, setShowD1Menu] = useState(false);
+  const [showD2Menu, setShowD2Menu] = useState(false);
   
   const [travelMode, setTravelMode] = useState("transit"); // transit | driving | walking
   const [chipTab, setChipTab] = useState("hubs"); // hubs | campuses | stops
@@ -70,6 +76,9 @@ export default function Home() {
   // Interactive Map Click Selection Mode ("origin" | "destination" | null)
   const [mapClickTarget, setMapClickTarget] = useState(null);
 
+  const d1ContainerRef = useRef(null);
+  const d2ContainerRef = useRef(null);
+
   useEffect(() => {
     api.get("/transit/stops").then((r) => setStops(r.data)).catch(() => {});
     api.get("/transit/campuses").then((r) => setCampuses(r.data)).catch(() => {});
@@ -81,6 +90,20 @@ export default function Home() {
   useEffect(() => {
     if (user && user.role !== "admin" && !user.alt_phone) setSafetyOpen(true);
   }, [user]);
+
+  // Click outside listener to close suggestion dropdown menus
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (d1ContainerRef.current && !d1ContainerRef.current.contains(e.target)) {
+        setShowD1Menu(false);
+      }
+      if (d2ContainerRef.current && !d2ContainerRef.current.contains(e.target)) {
+        setShowD2Menu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     if (!navigator.geolocation) return;
@@ -107,27 +130,6 @@ export default function Home() {
     }
   }, [d1, d2, travelMode]);
 
-  const searchGlobalLocation = async (query, setTarget) => {
-    if (!query?.trim()) return;
-    try {
-      const res = await api.get(`/transit/geocode?q=${encodeURIComponent(query)}`);
-      if (res.data && res.data.results && res.data.results.length > 0) {
-        const top = res.data.results[0];
-        const item = { name: top.name, lat: top.lat, lng: top.lng };
-        if (setTarget === "d1") {
-          setD1(item);
-          setD1Query(top.short || top.name);
-        } else if (setTarget === "d2") {
-          setD2(item);
-          setD2Query(top.short || top.name);
-        }
-        toast.success(`Found: ${top.name.split(",")[0]}`);
-      }
-    } catch {
-      toast.error("Geocoding lookup failed.");
-    }
-  };
-
   const allLocations = useMemo(() => {
     const list = [...hubs, ...campuses, ...stops];
     const unique = [];
@@ -140,6 +142,92 @@ export default function Home() {
     }
     return unique;
   }, [hubs, campuses, stops]);
+
+  // Handletyping in "From (Origin)" section - Suggest place names WITHOUT auto-writing
+  const handleD1Change = (e) => {
+    const val = e.target.value;
+    setD1Query(val);
+    setShowD1Menu(true);
+
+    if (val.trim().length >= 2) {
+      const lower = val.toLowerCase();
+      // Filter predefined places
+      const localMatches = allLocations.filter((loc) =>
+        loc.name.toLowerCase().includes(lower) ||
+        (loc.short && loc.short.toLowerCase().includes(lower)) ||
+        (loc.city && loc.city.toLowerCase().includes(lower))
+      );
+      setD1Suggestions(localMatches.slice(0, 6));
+
+      // Fetch geocoded suggestions in background without modifying input text
+      api.get(`/transit/geocode?q=${encodeURIComponent(val)}`)
+        .then((res) => {
+          if (res.data && res.data.results) {
+            const combined = [...localMatches];
+            for (const r of res.data.results) {
+              if (!combined.some((c) => c.name.toLowerCase() === r.name.toLowerCase())) {
+                combined.push(r);
+              }
+            }
+            setD1Suggestions(combined.slice(0, 6));
+          }
+        })
+        .catch(() => {});
+    } else {
+      setD1Suggestions([]);
+    }
+  };
+
+  // Handle typing in "To (Destination)" section - Suggest place names WITHOUT auto-writing
+  const handleD2Change = (e) => {
+    const val = e.target.value;
+    setD2Query(val);
+    setShowD2Menu(true);
+
+    if (val.trim().length >= 2) {
+      const lower = val.toLowerCase();
+      const localMatches = allLocations.filter((loc) =>
+        loc.name.toLowerCase().includes(lower) ||
+        (loc.short && loc.short.toLowerCase().includes(lower)) ||
+        (loc.city && loc.city.toLowerCase().includes(lower))
+      );
+      setD2Suggestions(localMatches.slice(0, 6));
+
+      api.get(`/transit/geocode?q=${encodeURIComponent(val)}`)
+        .then((res) => {
+          if (res.data && res.data.results) {
+            const combined = [...localMatches];
+            for (const r of res.data.results) {
+              if (!combined.some((c) => c.name.toLowerCase() === r.name.toLowerCase())) {
+                combined.push(r);
+              }
+            }
+            setD2Suggestions(combined.slice(0, 6));
+          }
+        })
+        .catch(() => {});
+    } else {
+      setD2Suggestions([]);
+    }
+  };
+
+  // User explicitly clicks a place suggestion for Start (From)
+  const selectD1Suggestion = (loc) => {
+    const selectedName = loc.short || loc.name;
+    setD1Query(selectedName);
+    setD1({ name: loc.name, lat: loc.lat, lng: loc.lng });
+    setShowD1Menu(false);
+    toast.success(`Selected Start: ${selectedName.split(",")[0]}`);
+  };
+
+  // User explicitly clicks a place suggestion for Destination (To)
+  const selectD2Suggestion = (loc) => {
+    const selectedName = loc.short || loc.name;
+    setD2Query(selectedName);
+    setD2({ name: loc.name, lat: loc.lat, lng: loc.lng });
+    setShowD2Menu(false);
+    toast.success(`Selected Destination: ${selectedName.split(",")[0]}`);
+  };
 
   const findLocation = (q) => {
     if (!q?.trim()) return null;
@@ -348,51 +436,108 @@ export default function Home() {
                 </button>
               </div>
 
-              {/* Input Fields & Global Search */}
+              {/* Input Fields with Interactive Place Suggestions Dropdown */}
               <div className="space-y-3">
-                <div className="space-y-1.5">
+                
+                {/* FROM SECTION */}
+                <div className="space-y-1.5 relative" ref={d1ContainerRef}>
                   <Label htmlFor="d1">From (Origin)</Label>
                   <div className="flex gap-2">
                     <Input
                       id="d1"
                       value={d1Query}
-                      onChange={(e) => {
-                        setD1Query(e.target.value);
-                        if (e.target.value.length > 2) searchGlobalLocation(e.target.value, "d1");
-                      }}
-                      list="all-locations-list"
+                      onChange={handleD1Change}
+                      onFocus={() => setShowD1Menu(true)}
                       placeholder="e.g. KIIT Campus 3, Kolkata, or Delhi Airport"
                       data-testid="d1-input"
+                      autoComplete="off"
                     />
-                    <VoiceInput onResult={(t) => { setD1Query(t); searchGlobalLocation(t, "d1"); }} testId="d1-voice" />
+                    <VoiceInput onResult={(t) => { setD1Query(t); }} testId="d1-voice" />
                   </div>
+
+                  {/* Suggestions Dropdown Menu for FROM (Does NOT auto-write!) */}
+                  {showD1Menu && d1Suggestions.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full mt-1 z-[2000] bg-[#0a0a10]/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl overflow-hidden max-h-56 overflow-y-auto">
+                      <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-[#00E5FF] font-semibold bg-white/5 border-b border-white/10">
+                        Suggested Places (Click to Select)
+                      </div>
+                      {d1Suggestions.map((loc, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => selectD1Suggestion(loc)}
+                          className="w-full text-left px-3 py-2 text-xs hover:bg-[#00E5FF]/15 hover:text-[#00E5FF] transition-colors flex items-center justify-between border-b border-white/5 last:border-0"
+                        >
+                          <div className="flex items-center gap-2 truncate pr-2">
+                            {loc.category === "Airport" && <Plane size={13} className="text-[#00E5FF] shrink-0" />}
+                            {loc.category === "Railway Station" && <Train size={13} className="text-[#00E5FF] shrink-0" />}
+                            {loc.category === "KIIT Campus" && <Building2 size={13} className="text-[#00E5FF] shrink-0" />}
+                            {(!loc.category || (loc.category !== "Airport" && loc.category !== "Railway Station" && loc.category !== "KIIT Campus")) && (
+                              <MapPin size={13} className="text-[#00E5FF] shrink-0" />
+                            )}
+                            <span className="truncate font-medium">{loc.short || loc.name}</span>
+                          </div>
+                          {loc.category && (
+                            <span className="text-[10px] opacity-60 bg-white/10 px-1.5 py-0.5 rounded shrink-0">
+                              {loc.category}
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                <div className="space-y-1.5">
+                {/* TO SECTION */}
+                <div className="space-y-1.5 relative" ref={d2ContainerRef}>
                   <Label htmlFor="d2">To (Destination)</Label>
                   <div className="flex gap-2">
                     <Input
                       id="d2"
                       value={d2Query}
-                      onChange={(e) => {
-                        setD2Query(e.target.value);
-                        if (e.target.value.length > 2) searchGlobalLocation(e.target.value, "d2");
-                      }}
-                      list="all-locations-list"
+                      onChange={handleD2Change}
+                      onFocus={() => setShowD2Menu(true)}
                       placeholder="e.g. Campus 15 (KIMS) or Howrah Station"
                       data-testid="d2-input"
+                      autoComplete="off"
                     />
-                    <VoiceInput onResult={(t) => { setD2Query(t); searchGlobalLocation(t, "d2"); }} testId="d2-voice" />
+                    <VoiceInput onResult={(t) => { setD2Query(t); }} testId="d2-voice" />
                   </div>
+
+                  {/* Suggestions Dropdown Menu for TO (Does NOT auto-write!) */}
+                  {showD2Menu && d2Suggestions.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full mt-1 z-[2000] bg-[#0a0a10]/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl overflow-hidden max-h-56 overflow-y-auto">
+                      <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-[#00E5FF] font-semibold bg-white/5 border-b border-white/10">
+                        Suggested Places (Click to Select)
+                      </div>
+                      {d2Suggestions.map((loc, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => selectD2Suggestion(loc)}
+                          className="w-full text-left px-3 py-2 text-xs hover:bg-[#00E5FF]/15 hover:text-[#00E5FF] transition-colors flex items-center justify-between border-b border-white/5 last:border-0"
+                        >
+                          <div className="flex items-center gap-2 truncate pr-2">
+                            {loc.category === "Airport" && <Plane size={13} className="text-[#00E5FF] shrink-0" />}
+                            {loc.category === "Railway Station" && <Train size={13} className="text-[#00E5FF] shrink-0" />}
+                            {loc.category === "KIIT Campus" && <Building2 size={13} className="text-[#00E5FF] shrink-0" />}
+                            {(!loc.category || (loc.category !== "Airport" && loc.category !== "Railway Station" && loc.category !== "KIIT Campus")) && (
+                              <MapPin size={13} className="text-[#00E5FF] shrink-0" />
+                            )}
+                            <span className="truncate font-medium">{loc.short || loc.name}</span>
+                          </div>
+                          {loc.category && (
+                            <span className="text-[10px] opacity-60 bg-white/10 px-1.5 py-0.5 rounded shrink-0">
+                              {loc.category}
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                <datalist id="all-locations-list">
-                  {allLocations.map((item, idx) => (
-                    <option key={idx} value={item.name} />
-                  ))}
-                </datalist>
-
-                {/* Quick Selection Tabs */}
+                {/* Quick Selection Chips Tabs */}
                 <div className="space-y-2 pt-1">
                   <div className="flex items-center gap-2 border-b border-white/10 pb-1 text-xs">
                     <button
