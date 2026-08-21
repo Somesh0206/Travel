@@ -16,9 +16,11 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("mova")
 
 mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
-client = AsyncIOMotorClient(mongo_url)
+client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=1500)
 db = client[os.environ.get('DB_NAME', 'mova_db')]
 
 JWT_SECRET = os.environ.get('JWT_SECRET', 'mova_secret_jwt_key_2026')
@@ -26,6 +28,13 @@ JWT_ALGO = "HS256"
 
 app = FastAPI(title="MOVA API")
 api = APIRouter(prefix="/api")
+
+# ---------- In-Memory Fallback Storage (when MongoDB is unreachable) ----------
+MEM_USERS = {}        # email -> user_dict
+MEM_USERS_BY_ID = {}  # id -> user_dict
+MEM_SOS = []          # list of sos_dicts
+MEM_LOCATIONS = {}    # user_id -> location_dict
+MEM_BUGS = []         # list of bug_dicts
 
 
 # ---------- Utils ----------
@@ -49,6 +58,104 @@ def make_token(user_id: str, email: str, role: str) -> str:
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGO)
 
 
+# Safe DB wrappers with fallback to in-memory store
+async def db_find_user_by_email(email: str) -> Optional[dict]:
+    try:
+        u = await db.users.find_one({"email": email})
+        if u:
+            return u
+    except Exception as e:
+        logger.warning("DB user fetch error: %s", e)
+    return MEM_USERS.get(email)
+
+
+async def db_find_user_by_id(uid: str) -> Optional[dict]:
+    try:
+        u = await db.users.find_one({"id": uid})
+        if u:
+            return u
+    except Exception as e:
+        logger.warning("DB user by id fetch error: %s", e)
+    return MEM_USERS_BY_ID.get(uid)
+
+
+async def db_insert_user(user: dict):
+    MEM_USERS[user["email"]] = user
+    MEM_USERS_BY_ID[user["id"]] = user
+    try:
+        await db.users.insert_one(user.copy())
+    except Exception as e:
+        logger.warning("DB user insert skipped: %s", e)
+
+
+async def db_update_user_safety(uid: str, alt_name: str, alt_phone: str):
+    u = MEM_USERS_BY_ID.get(uid)
+    if u:
+        u["alt_name"] = alt_name
+        u["alt_phone"] = alt_phone
+    try:
+        await db.users.update_one({"id": uid}, {"$set": {"alt_name": alt_name, "alt_phone": alt_phone}})
+    except Exception as e:
+        logger.warning("DB user update skipped: %s", e)
+
+
+async def db_insert_sos(doc: dict):
+    MEM_SOS.insert(0, doc)
+    try:
+        await db.sos_alerts.insert_one(doc.copy())
+    except Exception as e:
+        logger.warning("DB SOS insert skipped: %s", e)
+
+
+async def db_list_sos() -> List[dict]:
+    try:
+        docs = await db.sos_alerts.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)
+        if docs:
+            return docs
+    except Exception as e:
+        logger.warning("DB list SOS skipped: %s", e)
+    return [dict(d) for d in MEM_SOS]
+
+
+async def db_upsert_location(doc: dict):
+    MEM_LOCATIONS[doc["user_id"]] = doc
+    try:
+        await db.locations.update_one({"user_id": doc["user_id"]}, {"$set": doc}, upsert=True)
+    except Exception as e:
+        logger.warning("DB location upsert skipped: %s", e)
+
+
+async def db_list_locations() -> List[dict]:
+    try:
+        docs = await db.locations.find({}, {"_id": 0}).to_list(500)
+        if docs:
+            return docs
+    except Exception as e:
+        logger.warning("DB list locations skipped: %s", e)
+    return list(MEM_LOCATIONS.values())
+
+
+async def db_insert_bug(doc: dict):
+    MEM_BUGS.insert(0, doc)
+    try:
+        await db.bug_reports.insert_one(doc.copy())
+    except Exception as e:
+        logger.warning("DB bug insert skipped: %s", e)
+
+
+async def db_list_bugs(query: dict) -> List[dict]:
+    try:
+        docs = await db.bug_reports.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+        if docs:
+            return docs
+    except Exception as e:
+        logger.warning("DB list bugs skipped: %s", e)
+    uid = query.get("user_id")
+    if uid:
+        return [b for b in MEM_BUGS if b.get("user_id") == uid]
+    return [dict(b) for b in MEM_BUGS]
+
+
 async def get_current_user(request: Request) -> dict:
     token = request.cookies.get("access_token")
     if not token:
@@ -63,12 +170,13 @@ async def get_current_user(request: Request) -> dict:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
-    user = await db.users.find_one({"id": payload["sub"]})
+    user = await db_find_user_by_id(payload["sub"])
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
-    user.pop("password_hash", None)
-    user.pop("_id", None)
-    return user
+    user_copy = dict(user)
+    user_copy.pop("password_hash", None)
+    user_copy.pop("_id", None)
+    return user_copy
 
 
 async def require_admin(user: dict = Depends(get_current_user)) -> dict:
@@ -82,6 +190,23 @@ def set_auth_cookie(response: Response, token: str):
         key="access_token", value=token, httponly=True,
         secure=True, samesite="none", max_age=7 * 24 * 3600, path="/",
     )
+
+
+# Seed default admin user in memory
+admin_email = os.environ.get("ADMIN_EMAIL", "admin@mova.app").lower()
+admin_pass = os.environ.get("ADMIN_PASSWORD", "mova@admin123")
+admin_uid = "admin-mova-seed-id"
+admin_user_doc = {
+    "id": admin_uid,
+    "name": "MOVA Admin",
+    "email": admin_email,
+    "password_hash": hash_pw(admin_pass),
+    "role": "admin",
+    "alt_name": "", "alt_phone": "",
+    "created_at": datetime.now(timezone.utc).isoformat(),
+}
+MEM_USERS[admin_email] = admin_user_doc
+MEM_USERS_BY_ID[admin_uid] = admin_user_doc
 
 
 # ---------- Models ----------
@@ -129,7 +254,7 @@ async def root():
 @api.post("/auth/register")
 async def register(body: RegisterIn, response: Response):
     email = body.email.lower()
-    existing = await db.users.find_one({"email": email})
+    existing = await db_find_user_by_email(email)
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
     uid = str(uuid.uuid4())
@@ -141,7 +266,7 @@ async def register(body: RegisterIn, response: Response):
         "alt_phone": body.alt_phone or "",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    await db.users.insert_one(user)
+    await db_insert_user(user)
     token = make_token(uid, email, "user")
     set_auth_cookie(response, token)
     return {
@@ -154,7 +279,7 @@ async def register(body: RegisterIn, response: Response):
 @api.post("/auth/login")
 async def login(body: LoginIn, response: Response):
     email = body.email.lower()
-    user = await db.users.find_one({"email": email})
+    user = await db_find_user_by_email(email)
     if not user or not verify_pw(body.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     token = make_token(user["id"], email, user.get("role", "user"))
@@ -181,10 +306,7 @@ async def me(user: dict = Depends(get_current_user)):
 
 @api.post("/safety/checkin")
 async def update_safety(body: SafetyCheckIn, user: dict = Depends(get_current_user)):
-    await db.users.update_one(
-        {"id": user["id"]},
-        {"$set": {"alt_name": body.alt_name, "alt_phone": body.alt_phone}},
-    )
+    await db_update_user_safety(user["id"], body.alt_name, body.alt_phone)
     return {"ok": True, "alt_name": body.alt_name, "alt_phone": body.alt_phone}
 
 
@@ -201,14 +323,15 @@ async def create_sos(body: SOSIn, user: dict = Depends(get_current_user)):
         "status": "active",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    await db.sos_alerts.insert_one(doc)
-    doc.pop("_id", None)
-    return doc
+    await db_insert_sos(doc)
+    doc_copy = dict(doc)
+    doc_copy.pop("_id", None)
+    return doc_copy
 
 
 @api.get("/sos/all")
 async def list_sos(user: dict = Depends(require_admin)):
-    docs = await db.sos_alerts.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    docs = await db_list_sos()
     return docs
 
 
@@ -220,13 +343,13 @@ async def update_location(body: LocationIn, user: dict = Depends(get_current_use
         "lat": body.lat, "lng": body.lng,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
-    await db.locations.update_one({"user_id": user["id"]}, {"$set": doc}, upsert=True)
+    await db_upsert_location(doc)
     return {"ok": True}
 
 
 @api.get("/location/all")
 async def list_locations(user: dict = Depends(require_admin)):
-    docs = await db.locations.find({}, {"_id": 0}).to_list(500)
+    docs = await db_list_locations()
     return docs
 
 
@@ -239,15 +362,16 @@ async def create_bug(body: BugReportIn, user: dict = Depends(get_current_user)):
         "category": body.category, "status": "open",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    await db.bug_reports.insert_one(doc)
-    doc.pop("_id", None)
-    return doc
+    await db_insert_bug(doc)
+    doc_copy = dict(doc)
+    doc_copy.pop("_id", None)
+    return doc_copy
 
 
 @api.get("/bugs")
 async def list_bugs(user: dict = Depends(get_current_user)):
     query = {} if user.get("role") == "admin" else {"user_id": user["id"]}
-    docs = await db.bug_reports.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    docs = await db_list_bugs(query)
     return docs
 
 
@@ -270,7 +394,6 @@ DEMO_ROUTES = [
     {"id": "r4", "name": "Night Safe Ride", "stops": ["s1", "s2", "s6", "s7"], "vehicle": "Campus Vehicle", "accessible": True, "eta_min": 14},
 ]
 
-# Nearby police stations (Bhubaneswar / KIIT area)
 POLICE_STATIONS = [
     {"name": "Infocity Police Station", "lat": 20.3489, "lng": 85.8151, "phone": "+91-674-2725100"},
     {"name": "Chandrasekharpur PS", "lat": 20.3196, "lng": 85.8154, "phone": "+91-674-2743100"},
@@ -302,36 +425,14 @@ app.add_middleware(
 )
 app.include_router(api)
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("mova")
-
 
 @app.on_event("startup")
 async def on_startup():
     try:
         await db.users.create_index("email", unique=True)
         await db.users.create_index("id", unique=True)
-        admin_email = os.environ.get("ADMIN_EMAIL", "admin@mova.app").lower()
-        admin_pass = os.environ.get("ADMIN_PASSWORD", "mova@admin123")
-        existing = await db.users.find_one({"email": admin_email})
-        if existing is None:
-            await db.users.insert_one({
-                "id": str(uuid.uuid4()),
-                "name": "MOVA Admin",
-                "email": admin_email,
-                "password_hash": hash_pw(admin_pass),
-                "role": "admin",
-                "alt_name": "", "alt_phone": "",
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            })
-            logger.info("Admin seeded: %s", admin_email)
-        elif not verify_pw(admin_pass, existing["password_hash"]):
-            await db.users.update_one(
-                {"email": admin_email},
-                {"$set": {"password_hash": hash_pw(admin_pass), "role": "admin"}},
-            )
     except Exception as e:
-        logger.warning("Database startup initialization skipped/failed: %s", e)
+        logger.warning("DB index creation skipped: %s", e)
 
 
 @app.on_event("shutdown")
@@ -340,4 +441,3 @@ async def on_shutdown():
         client.close()
     except Exception:
         pass
-
