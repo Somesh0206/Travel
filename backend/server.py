@@ -447,27 +447,117 @@ PAN_INDIA_HUBS = [
 ]
 
 DEMO_STOPS = [
-    {"id": "s1", "name": "KIIT Square", "lat": 20.3558, "lng": 85.8175, "accessible": True},
-    {"id": "s2", "name": "KIIT Lake Gate", "lat": 20.3492, "lng": 85.8213, "accessible": True},
-    {"id": "s3", "name": "Campus 15", "lat": 20.3541, "lng": 85.8262, "accessible": False},
-    {"id": "s4", "name": "Patia Station", "lat": 20.3448, "lng": 85.8156, "accessible": True},
-    {"id": "s5", "name": "Nandankanan Rd", "lat": 20.3766, "lng": 85.8203, "accessible": True},
-    {"id": "s6", "name": "Vani Vihar", "lat": 20.2951, "lng": 85.8398, "accessible": True},
-    {"id": "s7", "name": "Master Canteen", "lat": 20.2701, "lng": 85.8412, "accessible": False},
-    {"id": "s8", "name": "Kalinga Hospital", "lat": 20.3084, "lng": 85.8267, "accessible": True},
+    {"id": "s1", "name": "KIIT Square (Campus 1 & 3)", "lat": 20.3558, "lng": 85.8175, "accessible": True, "ramp": True, "tactile_paving": True, "shelter": True, "lighting": "High"},
+    {"id": "s2", "name": "KIIT Lake Gate & KSAC", "lat": 20.3492, "lng": 85.8213, "accessible": True, "ramp": True, "tactile_paving": True, "shelter": True, "lighting": "High"},
+    {"id": "s3", "name": "Campus 15 (KIMS Hospital)", "lat": 20.3541, "lng": 85.8262, "accessible": True, "ramp": True, "tactile_paving": True, "shelter": True, "lighting": "High"},
+    {"id": "s4", "name": "Patia Railway Halt", "lat": 20.3448, "lng": 85.8156, "accessible": True, "ramp": True, "tactile_paving": False, "shelter": True, "lighting": "Medium"},
+    {"id": "s5", "name": "Nandankanan Road Junction", "lat": 20.3766, "lng": 85.8203, "accessible": True, "ramp": True, "tactile_paving": True, "shelter": True, "lighting": "High"},
+    {"id": "s6", "name": "Vani Vihar Square", "lat": 20.2951, "lng": 85.8398, "accessible": True, "ramp": True, "tactile_paving": True, "shelter": True, "lighting": "High"},
+    {"id": "s7", "name": "Master Canteen (BBS Station)", "lat": 20.2701, "lng": 85.8412, "accessible": True, "ramp": True, "tactile_paving": True, "shelter": True, "lighting": "High"},
+    {"id": "s8", "name": "Kalinga Hospital Gate", "lat": 20.3084, "lng": 85.8267, "accessible": True, "ramp": True, "tactile_paving": True, "shelter": True, "lighting": "High"},
 ]
 
 DEMO_ROUTES = [
-    {"id": "r1", "name": "Campus Loop", "stops": ["s1", "s2", "s3", "s5"], "vehicle": "Low-floor Bus", "accessible": True, "eta_min": 6},
-    {"id": "r2", "name": "City Express", "stops": ["s1", "s4", "s6", "s7"], "vehicle": "Shared Van", "accessible": False, "eta_min": 12},
-    {"id": "r3", "name": "Hospital Route", "stops": ["s2", "s4", "s8"], "vehicle": "Wheelchair Bus", "accessible": True, "eta_min": 9},
-    {"id": "r4", "name": "Night Safe Ride", "stops": ["s1", "s2", "s6", "s7"], "vehicle": "Campus Vehicle", "accessible": True, "eta_min": 14},
+    {
+        "id": "r1",
+        "name": "Campus Loop Express",
+        "stops": ["s1", "s2", "s3", "s5"],
+        "vehicle": "Low-Floor Electric Bus",
+        "vehicle_no": "OD-02-KIIT-101",
+        "accessible": True,
+        "wheelchair_accessible": True,
+        "low_floor": True,
+        "ramp_equipped": True,
+        "safe_night_corridor": True,
+        "audio_announcements": True,
+        "priority_elderly_seats": 6,
+        "available_seats": 18,
+        "wheelchair_spaces": 2,
+        "crowd_level": "Low",
+        "delay_min": 0,
+        "detour_alert": "",
+        "frequency": "Every 10 min",
+        "eta_min": 4,
+        "schedule": ["07:30", "08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00", "22:00"]
+    },
+    {
+        "id": "r2",
+        "name": "City Transit Link",
+        "stops": ["s1", "s4", "s6", "s7"],
+        "vehicle": "AC Low-Floor City Bus",
+        "vehicle_no": "OD-02-CRUT-502",
+        "accessible": True,
+        "wheelchair_accessible": True,
+        "low_floor": True,
+        "ramp_equipped": True,
+        "safe_night_corridor": False,
+        "audio_announcements": True,
+        "priority_elderly_seats": 4,
+        "available_seats": 8,
+        "wheelchair_spaces": 1,
+        "crowd_level": "Moderate",
+        "delay_min": 3,
+        "detour_alert": "",
+        "frequency": "Every 15 min",
+        "eta_min": 8,
+        "schedule": ["06:00", "07:00", "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00", "22:00"]
+    },
+    {
+        "id": "r3",
+        "name": "KIMS Medical Care Line",
+        "stops": ["s2", "s4", "s8", "s3"],
+        "vehicle": "Wheelchair-Lift Specialized Van",
+        "vehicle_no": "OD-02-MED-304",
+        "accessible": True,
+        "wheelchair_accessible": True,
+        "low_floor": True,
+        "ramp_equipped": True,
+        "safe_night_corridor": True,
+        "audio_announcements": True,
+        "priority_elderly_seats": 8,
+        "available_seats": 12,
+        "wheelchair_spaces": 3,
+        "crowd_level": "Low",
+        "delay_min": 0,
+        "detour_alert": "",
+        "frequency": "Every 20 min",
+        "eta_min": 6,
+        "schedule": ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00"]
+    },
+    {
+        "id": "r4",
+        "name": "Night Safe Escort Ride",
+        "stops": ["s1", "s2", "s3", "s4", "s6"],
+        "vehicle": "Campus Security Escort Vehicle",
+        "vehicle_no": "OD-02-SAFE-007",
+        "accessible": True,
+        "wheelchair_accessible": True,
+        "low_floor": False,
+        "ramp_equipped": True,
+        "safe_night_corridor": True,
+        "audio_announcements": True,
+        "priority_elderly_seats": 4,
+        "available_seats": 6,
+        "wheelchair_spaces": 1,
+        "crowd_level": "Low",
+        "delay_min": 0,
+        "detour_alert": "Patrolling well-lit campus security corridors",
+        "frequency": "On-demand & Every 15 min",
+        "eta_min": 5,
+        "schedule": ["20:00", "20:30", "21:00", "21:30", "22:00", "22:30", "23:00", "23:30", "00:00", "01:00", "02:00", "03:00", "04:00", "05:00"]
+    },
 ]
+
+# In-memory store for driver assistance requests and crowding reports
+MEM_ASSISTANCE_REQUESTS = []
 
 POLICE_STATIONS = [
     {"name": "Infocity Police Station", "lat": 20.3489, "lng": 85.8151, "phone": "+91-674-2725100"},
     {"name": "Chandrasekharpur PS", "lat": 20.3196, "lng": 85.8154, "phone": "+91-674-2743100"},
     {"name": "Nayapalli PS", "lat": 20.2932, "lng": 85.8194, "phone": "+91-674-2555100"},
+    {"name": "KIIT University Campus Security", "lat": 20.3558, "lng": 85.8175, "phone": "+91-674-2725113"},
+    {"name": "National Emergency SOS Hotline", "lat": 20.2961, "lng": 85.8245, "phone": "112"},
+    {"name": "Women & Student Safety Helpline", "lat": 20.3550, "lng": 85.8180, "phone": "1091"},
 ]
 
 
@@ -475,6 +565,31 @@ class NavLinksIn(BaseModel):
     origin: str
     destination: str
     mode: Optional[str] = "transit"  # transit | driving | walking
+
+
+class StatusReportIn(BaseModel):
+    route_id: str
+    crowd_level: Optional[str] = None  # Low | Moderate | High
+    delay_min: Optional[int] = None
+    note: Optional[str] = ""
+
+
+class DriverUpdateIn(BaseModel):
+    route_id: str
+    crowd_level: str
+    available_seats: int
+    wheelchair_spaces: int
+    delay_min: int
+    detour_alert: Optional[str] = ""
+
+
+class AssistanceRequestIn(BaseModel):
+    route_id: str
+    stop_id: str
+    stop_name: str
+    assistance_type: str  # Wheelchair Ramp Assistance | Elderly Boarding Help | Late Night Escort | Visual Guide
+    passenger_name: Optional[str] = ""
+    note: Optional[str] = ""
 
 
 @api.get("/transit/campuses")
@@ -566,6 +681,100 @@ async def get_stops():
 @api.get("/transit/routes")
 async def get_routes():
     return DEMO_ROUTES
+
+
+@api.post("/transit/report-status")
+async def report_route_status(body: StatusReportIn, user: dict = Depends(get_current_user)):
+    """Allow passengers and operators to submit live crowding and delay reports."""
+    for r in DEMO_ROUTES:
+        if r["id"] == body.route_id:
+            if body.crowd_level:
+                r["crowd_level"] = body.crowd_level
+            if body.delay_min is not None:
+                r["delay_min"] = max(0, body.delay_min)
+            return {"ok": True, "route": r}
+    raise HTTPException(status_code=404, detail="Route not found")
+
+
+@api.get("/driver/routes")
+async def get_driver_routes(user: dict = Depends(get_current_user)):
+    """Operator / Driver portal overview of all fleet lines and statuses."""
+    return DEMO_ROUTES
+
+
+@api.post("/driver/update")
+async def update_driver_status(body: DriverUpdateIn, user: dict = Depends(get_current_user)):
+    """Driver updates live vehicle occupancy, seats, delays, and detour alerts."""
+    for r in DEMO_ROUTES:
+        if r["id"] == body.route_id:
+            r["crowd_level"] = body.crowd_level
+            r["available_seats"] = body.available_seats
+            r["wheelchair_spaces"] = body.wheelchair_spaces
+            r["delay_min"] = body.delay_min
+            r["detour_alert"] = body.detour_alert or ""
+            return {"ok": True, "route": r}
+    raise HTTPException(status_code=404, detail="Route not found")
+
+
+@api.post("/driver/assistance-request")
+async def request_assistance(body: AssistanceRequestIn, user: dict = Depends(get_current_user)):
+    """Passenger requests accessibility assistance (wheelchair ramp, elderly aid, night escort) at a stop."""
+    req = {
+        "id": str(uuid.uuid4()),
+        "route_id": body.route_id,
+        "stop_id": body.stop_id,
+        "stop_name": body.stop_name,
+        "assistance_type": body.assistance_type,
+        "passenger_name": body.passenger_name or user.get("name", "Passenger"),
+        "user_email": user.get("email", ""),
+        "note": body.note or "",
+        "status": "pending",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    MEM_ASSISTANCE_REQUESTS.insert(0, req)
+    return {"ok": True, "request": req}
+
+
+@api.get("/driver/assistance-requests")
+async def list_assistance_requests(user: dict = Depends(get_current_user)):
+    """Driver and operators view active accessibility assistance requests."""
+    return MEM_ASSISTANCE_REQUESTS[:20]
+
+
+@api.post("/driver/assistance-requests/{req_id}/complete")
+async def complete_assistance_request(req_id: str, user: dict = Depends(get_current_user)):
+    """Driver marks assistance request as fulfilled."""
+    for req in MEM_ASSISTANCE_REQUESTS:
+        if req["id"] == req_id:
+            req["status"] = "completed"
+            return {"ok": True, "request": req}
+    raise HTTPException(status_code=404, detail="Request not found")
+
+
+@api.get("/transit/offline-pack")
+async def get_offline_pack():
+    """Download entire offline transit directory, schedules, emergency hotlines, and campus routes."""
+    return {
+        "version": "2.0.0",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "routes": DEMO_ROUTES,
+        "stops": DEMO_STOPS,
+        "campuses": KIIT_CAMPUSES,
+        "hubs": PAN_INDIA_HUBS,
+        "police": POLICE_STATIONS,
+        "emergency_contacts": [
+            {"name": "National Emergency SOS", "number": "112", "desc": "Police, Fire, Medical"},
+            {"name": "KIIT University Campus Security", "number": "+91-674-2725113", "desc": "24/7 Campus Control Room"},
+            {"name": "Women Safety Helpline", "number": "1091", "desc": "Toll-free 24/7"},
+            {"name": "KIMS Hospital Emergency Ambulance", "number": "108", "desc": "Medical Emergency & Trauma Care"},
+            {"name": "CRUT Mo Bus Helpline", "number": "1800-345-7177", "desc": "Public Bus Operations & Lost & Found"}
+        ],
+        "offline_navigation_tips": [
+            "All KIIT campus e-rickshaws and blue transit buses accept Student ID cards.",
+            "Low-floor wheelchair buses (Route R1 & R3) stop at designated yellow accessibility markings at Campus 1, 3, KSAC, and KIMS.",
+            "Night Safe Escort Rides operate continuously between 20:00 and 05:00 along all lighted campus loops."
+        ]
+    }
 
 
 @api.get("/transit/road-route")

@@ -30,8 +30,11 @@ export default function Header({ onBug }) {
 
         <nav className="ml-6 hidden md:flex items-center gap-1 text-sm">
           <Link to="/" className="px-3 py-1.5 rounded-full hover:bg-white/5" data-testid="nav-home">Home</Link>
+          <Link to="/driver" className="px-3 py-1.5 rounded-full hover:bg-white/5 inline-flex items-center gap-1.5 text-[#00E5FF]" data-testid="nav-driver">
+            <Bus size={14} /> Driver Portal
+          </Link>
           <Link to="/offline" className="px-3 py-1.5 rounded-full hover:bg-white/5 inline-flex items-center gap-1.5" data-testid="nav-offline">
-            <WifiOff size={14} /> Offline
+            <WifiOff size={14} /> Offline Schedules
           </Link>
           {user && user.role === "admin" && (
             <Link to="/admin" className="px-3 py-1.5 rounded-full hover:bg-white/5 inline-flex items-center gap-1.5" data-testid="nav-admin">

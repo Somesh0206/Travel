@@ -12,12 +12,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Accessibility, Navigation, MapPin, Clock, Bus, ShieldPlus,
   WifiOff, IndianRupee, Route, ExternalLink, Car, Footprints,
-  Building2, Plane, Train, Globe, MousePointerClick, CornerUpRight, Search
+  Building2, Plane, Train, Globe, MousePointerClick, CornerUpRight, Search,
+  Volume2, ShieldCheck, AlertTriangle, Users, MessageSquare, Radio, Bell
 } from "lucide-react";
 
 // Haversine fallback distance in km
@@ -44,6 +47,7 @@ function computeFare(km, { accessible, night, mode = "transit" }) {
 
 export default function Home() {
   const { user, theme } = useAuth();
+  const nav = useNavigate();
   const [stops, setStops] = useState([]);
   const [campuses, setCampuses] = useState([]);
   const [hubs, setHubs] = useState([]);
@@ -62,14 +66,33 @@ export default function Home() {
   const [showD2Menu, setShowD2Menu] = useState(false);
   
   const [travelMode, setTravelMode] = useState("transit"); // transit | driving | walking
-  const [chipTab, setChipTab] = useState("hubs"); // hubs | campuses | stops
+  const [chipTab, setChipTab] = useState("hubs"); // hubs | campuses | stops | explorer
+  const [activeViewTab, setActiveViewTab] = useState("planner"); // planner | explorer | crowding
+  
+  // Accessibility filters (Module 2)
   const [wheelchair, setWheelchair] = useState(true);
   const [nightSafe, setNightSafe] = useState(false);
+  const [elderlyPriority, setElderlyPriority] = useState(false);
+  const [voiceAssistance, setVoiceAssistance] = useState(false);
+  const [highContrast, setHighContrast] = useState(false);
   
   const [userLoc, setUserLoc] = useState(null);
   const [safetyOpen, setSafetyOpen] = useState(false);
   const [bugOpen, setBugOpen] = useState(false);
   
+  // Assistance Request Dialog state (Module 2)
+  const [assistOpen, setAssistOpen] = useState(false);
+  const [assistStop, setAssistStop] = useState("");
+  const [assistType, setAssistType] = useState("Wheelchair Ramp Assistance");
+  const [assistNote, setAssistNote] = useState("");
+  const [assistRouteId, setAssistRouteId] = useState("r1");
+
+  // Crowding / Delay Report Dialog (Module 3)
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportRouteId, setReportRouteId] = useState("r1");
+  const [reportCrowd, setReportCrowd] = useState("Moderate");
+  const [reportDelay, setReportDelay] = useState(5);
+
   // Road-following navigation polyline data from OSRM
   const [roadData, setRoadData] = useState(null);
   
@@ -79,12 +102,18 @@ export default function Home() {
   const d1ContainerRef = useRef(null);
   const d2ContainerRef = useRef(null);
 
+  const fetchRoutes = () => {
+    api.get("/transit/routes").then((r) => setRoutes(r.data)).catch(() => {});
+  };
+
   useEffect(() => {
     api.get("/transit/stops").then((r) => setStops(r.data)).catch(() => {});
     api.get("/transit/campuses").then((r) => setCampuses(r.data)).catch(() => {});
     api.get("/transit/hubs").then((r) => setHubs(r.data)).catch(() => {});
-    api.get("/transit/routes").then((r) => setRoutes(r.data)).catch(() => {});
     api.get("/safety/police").then((r) => setPolice(r.data)).catch(() => {});
+    fetchRoutes();
+    const interval = setInterval(fetchRoutes, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -105,666 +134,777 @@ export default function Home() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Fetch geocoded suggestions as user types (Without auto-overwriting input text)
   useEffect(() => {
-    if (!navigator.geolocation) return;
-    const id = navigator.geolocation.watchPosition(
-      (pos) => {
-        const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        setUserLoc(loc);
-        api.post("/location/update", loc).catch(() => {});
-      },
-      () => {},
-      { enableHighAccuracy: true, maximumAge: 15000, timeout: 10000 }
-    );
-    return () => navigator.geolocation.clearWatch(id);
-  }, []);
-
-  // Fetch road-following navigation route from OSRM engine whenever d1 or d2 changes
-  useEffect(() => {
-    if (d1 && d2) {
-      api.get(`/transit/road-route?start_lat=${d1.lat}&start_lng=${d1.lng}&end_lat=${d2.lat}&end_lng=${d2.lng}&mode=${travelMode}`)
-        .then((r) => setRoadData(r.data))
-        .catch(() => setRoadData(null));
-    } else {
-      setRoadData(null);
-    }
-  }, [d1, d2, travelMode]);
-
-  const allLocations = useMemo(() => {
-    const list = [...hubs, ...campuses, ...stops];
-    const unique = [];
-    const seen = new Set();
-    for (const item of list) {
-      if (!seen.has(item.name)) {
-        seen.add(item.name);
-        unique.push(item);
-      }
-    }
-    return unique;
-  }, [hubs, campuses, stops]);
-
-  // Handletyping in "From (Origin)" section - Suggest place names WITHOUT auto-writing
-  const handleD1Change = (e) => {
-    const val = e.target.value;
-    setD1Query(val);
-    setShowD1Menu(true);
-
-    if (val.trim().length >= 2) {
-      const lower = val.toLowerCase();
-      // Filter predefined places
-      const localMatches = allLocations.filter((loc) =>
-        loc.name.toLowerCase().includes(lower) ||
-        (loc.short && loc.short.toLowerCase().includes(lower)) ||
-        (loc.city && loc.city.toLowerCase().includes(lower))
-      );
-      setD1Suggestions(localMatches.slice(0, 6));
-
-      // Fetch geocoded suggestions in background without modifying input text
-      api.get(`/transit/geocode?q=${encodeURIComponent(val)}`)
-        .then((res) => {
-          if (res.data && res.data.results) {
-            const combined = [...localMatches];
-            for (const r of res.data.results) {
-              if (!combined.some((c) => c.name.toLowerCase() === r.name.toLowerCase())) {
-                combined.push(r);
-              }
-            }
-            setD1Suggestions(combined.slice(0, 6));
-          }
-        })
-        .catch(() => {});
-    } else {
+    const q = d1Query.trim();
+    if (!q || q.length < 2) {
       setD1Suggestions([]);
-    }
-  };
-
-  // Handle typing in "To (Destination)" section - Suggest place names WITHOUT auto-writing
-  const handleD2Change = (e) => {
-    const val = e.target.value;
-    setD2Query(val);
-    setShowD2Menu(true);
-
-    if (val.trim().length >= 2) {
-      const lower = val.toLowerCase();
-      const localMatches = allLocations.filter((loc) =>
-        loc.name.toLowerCase().includes(lower) ||
-        (loc.short && loc.short.toLowerCase().includes(lower)) ||
-        (loc.city && loc.city.toLowerCase().includes(lower))
-      );
-      setD2Suggestions(localMatches.slice(0, 6));
-
-      api.get(`/transit/geocode?q=${encodeURIComponent(val)}`)
-        .then((res) => {
-          if (res.data && res.data.results) {
-            const combined = [...localMatches];
-            for (const r of res.data.results) {
-              if (!combined.some((c) => c.name.toLowerCase() === r.name.toLowerCase())) {
-                combined.push(r);
-              }
-            }
-            setD2Suggestions(combined.slice(0, 6));
-          }
-        })
-        .catch(() => {});
-    } else {
-      setD2Suggestions([]);
-    }
-  };
-
-  // User explicitly clicks a place suggestion for Start (From)
-  const selectD1Suggestion = (loc) => {
-    const selectedName = loc.short || loc.name;
-    setD1Query(selectedName);
-    setD1({ name: loc.name, lat: loc.lat, lng: loc.lng });
-    setShowD1Menu(false);
-    toast.success(`Selected Start: ${selectedName.split(",")[0]}`);
-  };
-
-  // User explicitly clicks a place suggestion for Destination (To)
-  const selectD2Suggestion = (loc) => {
-    const selectedName = loc.short || loc.name;
-    setD2Query(selectedName);
-    setD2({ name: loc.name, lat: loc.lat, lng: loc.lng });
-    setShowD2Menu(false);
-    toast.success(`Selected Destination: ${selectedName.split(",")[0]}`);
-  };
-
-  const findLocation = (q) => {
-    if (!q?.trim()) return null;
-    const lower = q.toLowerCase();
-    return allLocations.find((x) => 
-      x.name.toLowerCase().includes(lower) || 
-      (x.short && x.short.toLowerCase().includes(lower)) ||
-      (x.city && x.city.toLowerCase().includes(lower))
-    ) || { name: q, lat: 20.3558, lng: 85.8175 };
-  };
-
-  const plan = () => {
-    if (!d1Query.trim() || !d2Query.trim()) {
-      toast.error("Please specify both Start and Destination locations.");
       return;
     }
-    const loc1 = d1 || findLocation(d1Query);
-    const loc2 = d2 || findLocation(d2Query);
-    setD1(loc1);
-    setD2(loc2);
-    toast.success(`Road navigation calculated: ${loc1.name.split(",")[0]} → ${loc2.name.split(",")[0]}`);
-  };
+    const timer = setTimeout(() => {
+      api.get(`/transit/geocode?q=${encodeURIComponent(q)}`)
+        .then((r) => {
+          if (r.data?.results) setD1Suggestions(r.data.results);
+        })
+        .catch(() => {});
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [d1Query]);
 
-  const handleMapClick = (lat, lng) => {
-    const label = `Pin (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
-    const clickedLoc = { name: label, lat, lng };
+  useEffect(() => {
+    const q = d2Query.trim();
+    if (!q || q.length < 2) {
+      setD2Suggestions([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      api.get(`/transit/geocode?q=${encodeURIComponent(q)}`)
+        .then((r) => {
+          if (r.data?.results) setD2Suggestions(r.data.results);
+        })
+        .catch(() => {});
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [d2Query]);
 
-    if (mapClickTarget === "origin") {
-      setD1(clickedLoc);
-      setD1Query(label);
-      setMapClickTarget(null);
-      toast.success(`Start point set: ${label}`);
-    } else if (mapClickTarget === "destination") {
-      setD2(clickedLoc);
-      setD2Query(label);
-      setMapClickTarget(null);
-      toast.success(`Destination set: ${label}`);
-    } else {
-      if (!d1) {
-        setD1(clickedLoc);
-        setD1Query(label);
-        toast.info(`Start point A set on map`);
-      } else {
-        setD2(clickedLoc);
-        setD2Query(label);
-        toast.info(`Destination B set on map`);
-      }
+  // Fetch real road-following navigation from OSRM whenever d1 and d2 coordinates are set
+  useEffect(() => {
+    if (!d1 || !d2) {
+      setRoadData(null);
+      return;
+    }
+    api.get(`/transit/road-route?start_lat=${d1.lat}&start_lng=${d1.lng}&end_lat=${d2.lat}&end_lng=${d2.lng}&mode=${travelMode}`)
+      .then((res) => {
+        if (res.data) setRoadData(res.data);
+      })
+      .catch(() => setRoadData(null));
+  }, [d1, d2, travelMode]);
+
+  // Speech announcement helper for Audio Guidance (Module 2 & 5)
+  const speakAnnouncement = (text) => {
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 0.95;
+      window.speechSynthesis.speak(utterance);
     }
   };
 
-  const navUrls = useMemo(() => {
-    const originStr = d1Query.trim() || (d1 ? d1.name : "KIIT Campus, Bhubaneswar");
-    const destStr = d2Query.trim() || (d2 ? d2.name : "Kolkata, West Bengal");
-    const orig = encodeURIComponent(originStr);
-    const dest = encodeURIComponent(destStr);
-    
-    const gMode = travelMode === "walking" ? "walking" : (travelMode === "driving" ? "driving" : "transit");
-    const aMode = travelMode === "walking" ? "w" : (travelMode === "driving" ? "d" : "r");
+  const simulateArrivalAlert = (route) => {
+    const msg = `Attention: ${route.name} (${route.vehicle}) is arriving at your stop in 2 minutes. Ramp and low-floor boarding ready.`;
+    speakAnnouncement(msg);
+    toast.info("🚌 Live Vehicle Approach Notification", {
+      description: msg,
+      duration: 7000
+    });
+  };
 
-    return {
-      google: `https://www.google.com/maps/dir/?api=1&origin=${orig}&destination=${dest}&travelmode=${gMode}`,
-      apple: `https://maps.apple.com/?saddr=${orig}&daddr=${dest}&dirflg=${aMode}`,
-    };
-  }, [d1Query, d2Query, d1, d2, travelMode]);
-
-  const routeStops = useMemo(() => {
-    if (!d1 || !d2) return [];
-    const eligible = routes.filter((r) => (wheelchair ? r.accessible : true));
-    for (const r of eligible) {
-      const iA = r.stops.indexOf(d1.id);
-      const iB = r.stops.indexOf(d2.id);
-      if (iA !== -1 && iB !== -1) {
-        const [lo, hi] = iA < iB ? [iA, iB] : [iB, iA];
-        return r.stops.slice(lo, hi + 1).map((sid) => stops.find((s) => s.id === sid)).filter(Boolean);
-      }
+  const handleAssistanceSubmit = async () => {
+    if (!assistStop) {
+      toast.warning("Please specify your boarding stop");
+      return;
     }
-    return [d1, d2];
-  }, [d1, d2, routes, stops, wheelchair]);
+    try {
+      await api.post("/driver/assistance-request", {
+        route_id: assistRouteId,
+        stop_id: assistStop,
+        stop_name: assistStop,
+        assistance_type: assistType,
+        note: assistNote
+      });
+      toast.success("Assistance Request Sent directly to the Driver & Control Center!");
+      setAssistOpen(false);
+      setAssistNote("");
+    } catch (e) {
+      toast.error("Failed to submit assistance request");
+    }
+  };
 
+  const handleReportSubmit = async () => {
+    try {
+      await api.post("/transit/report-status", {
+        route_id: reportRouteId,
+        crowd_level: reportCrowd,
+        delay_min: Number(reportDelay)
+      });
+      toast.success("Crowding & Delay report submitted. Thank you for helping fellow commuters!");
+      setReportOpen(false);
+      fetchRoutes();
+    } catch (e) {
+      toast.error("Failed to submit report");
+    }
+  };
+
+  // Filter routes based on accessibility options
   const suggested = useMemo(() => {
-    let list = routes;
-    if (wheelchair) list = list.filter((r) => r.accessible);
-    if (nightSafe) list = list.filter((r) => r.name.toLowerCase().includes("night") || r.accessible);
-    return list;
-  }, [routes, wheelchair, nightSafe]);
+    return routes.filter((r) => {
+      if (wheelchair && !r.accessible && !r.wheelchair_accessible) return false;
+      if (nightSafe && !r.safe_night_corridor && !r.name.toLowerCase().includes("night")) return false;
+      if (elderlyPriority && (r.priority_elderly_seats || 0) < 4) return false;
+      return true;
+    });
+  }, [routes, wheelchair, nightSafe, elderlyPriority]);
 
+  // Compute calculated journey details
   const journey = useMemo(() => {
     if (!d1 || !d2) return null;
-    const km = roadData ? roadData.distance_km : distKm(d1, d2).toFixed(1);
-    const estMinutes = roadData ? roadData.duration_min : (travelMode === "walking" ? Math.round(km * 12) : Math.round(km * 2.2 + 10));
-    const fare = computeFare(parseFloat(km), { accessible: wheelchair, night: nightSafe, mode: travelMode });
-    
-    return {
-      km,
-      fare,
-      estMinutes,
-      isRoad: roadData?.found || false,
-      steps: roadData?.steps || []
-    };
-  }, [d1, d2, roadData, wheelchair, nightSafe, travelMode]);
 
-  const activeChips = useMemo(() => {
-    if (chipTab === "hubs") return hubs;
-    if (chipTab === "campuses") return campuses;
-    return stops;
-  }, [chipTab, hubs, campuses, stops]);
+    let km = 0;
+    let isRoad = false;
+    let steps = [];
+
+    if (roadData && roadData.distance_km > 0) {
+      km = roadData.distance_km;
+      isRoad = roadData.source === "osrm";
+      steps = roadData.steps || [];
+    } else {
+      km = Math.max(0.4, Number(distKm(d1, d2).toFixed(2)));
+    }
+
+    const fare = computeFare(km, { accessible: wheelchair, night: nightSafe, mode: travelMode });
+    const speed = travelMode === "walking" ? 4.5 : (travelMode === "driving" ? 35 : 22);
+    const estMinutes = roadData?.duration_min ? Math.round(roadData.duration_min) : Math.max(3, Math.round((km / speed) * 60));
+
+    return { km, fare, estMinutes, isRoad, steps };
+  }, [d1, d2, wheelchair, nightSafe, travelMode, roadData]);
+
+  // Map Click Coordinate Handler
+  const handleMapCoordinatePick = (coords) => {
+    const label = `Selected (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})`;
+    if (mapClickTarget === "origin") {
+      setD1(coords);
+      setD1Query(label);
+      setMapClickTarget(null);
+      toast.success("Origin set from map click");
+    } else if (mapClickTarget === "destination") {
+      setD2(coords);
+      setD2Query(label);
+      setMapClickTarget(null);
+      toast.success("Destination set from map click");
+    }
+  };
 
   return (
-    <div className="min-h-screen mova-hero-grid">
-      <Header onBug={() => setBugOpen(true)} />
+    <div className={`min-h-screen mova-hero-grid text-white ${highContrast ? "contrast-125 bg-black" : ""}`}>
+      <Header />
 
-      <main className="max-w-7xl mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-6">
-        {/* Left: Interactive Road Navigation Map */}
-        <section className="space-y-4">
-          <div className="flex items-center justify-between bg-white/5 p-2 rounded-2xl border border-white/10 text-xs">
-            <div className="flex items-center gap-2 font-medium">
-              <Route size={16} className="text-[#00E5FF]" /> Turn-by-Turn Road Navigation Map
+      <main className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
+        {/* Top Hero Banner & Accessibility Preset Bar */}
+        <div className="mova-glass rounded-3xl p-5 sm:p-7 border border-white/10 relative overflow-hidden">
+          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+            <div className="space-y-1.5 max-w-2xl">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#00E5FF]/20 border border-[#00E5FF]/30 text-[#00E5FF] text-xs font-semibold uppercase tracking-wider">
+                <Accessibility size={13} /> 5. Accessible Public Transport Assistant
+              </div>
+              <h1 className="text-3xl sm:text-4xl font-bold tracking-tighter" style={{ fontFamily: "Outfit" }}>
+                Safe & Accessible Mobility
+              </h1>
+              <p className="text-sm opacity-75 leading-relaxed">
+                Smart street routing, wheelchair boarding assistance, live crowding updates, and night-safe transit across all KIIT Campuses and pan-India transit corridors.
+              </p>
             </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setMapClickTarget(mapClickTarget === "origin" ? null : "origin")}
-                className={`px-3 py-1 rounded-xl font-semibold flex items-center gap-1 transition-all ${
-                  mapClickTarget === "origin"
-                    ? "bg-[#00E5FF] text-black shadow-md"
-                    : "bg-white/10 hover:bg-white/20 text-white"
-                }`}
+
+            {/* Quick Launch Shortcuts: Driver Portal & Offline Pack */}
+            <div className="flex flex-wrap gap-2.5 w-full lg:w-auto">
+              <Button
+                onClick={() => setAssistOpen(true)}
+                className="pill-btn bg-[#00E5FF] text-black font-bold hover:bg-[#00B8CC] shadow-lg shadow-[#00E5FF]/20 text-xs sm:text-sm"
               >
-                <MousePointerClick size={13} /> Set Start (A)
-              </button>
-              <button
-                type="button"
-                onClick={() => setMapClickTarget(mapClickTarget === "destination" ? null : "destination")}
-                className={`px-3 py-1 rounded-xl font-semibold flex items-center gap-1 transition-all ${
-                  mapClickTarget === "destination"
-                    ? "bg-[#B24CFF] text-white shadow-md"
-                    : "bg-white/10 hover:bg-white/20 text-white"
-                }`}
+                <Accessibility size={15} className="mr-1.5" /> Request Boarding Aid
+              </Button>
+              <Button
+                onClick={() => setReportOpen(true)}
+                variant="outline"
+                className="pill-btn border-white/20 text-xs sm:text-sm"
               >
-                <MousePointerClick size={13} /> Set Dest (B)
-              </button>
+                <Users size={15} className="mr-1.5 text-amber-400" /> Report Crowding
+              </Button>
+              <Button
+                onClick={() => nav("/driver")}
+                variant="outline"
+                className="pill-btn border-[#00E5FF]/40 text-[#00E5FF] hover:bg-[#00E5FF]/10 text-xs sm:text-sm"
+              >
+                <Radio size={14} className="mr-1.5" /> Driver Console
+              </Button>
+              <Button
+                onClick={() => nav("/offline")}
+                variant="outline"
+                className="pill-btn border-white/20 text-xs sm:text-sm"
+              >
+                <WifiOff size={14} className="mr-1.5 text-orange-400" /> Offline Pack
+              </Button>
             </div>
           </div>
 
-          <MapView
-            theme={theme}
-            stops={stops}
-            routeStops={routeStops}
-            roadCoords={roadData?.coordinates || []}
-            d1={d1}
-            d2={d2}
-            userLoc={userLoc}
-            police={police}
-            height="64vh"
-            onMapClick={handleMapClick}
-            clickMode={mapClickTarget}
-          />
+          {/* Module 2: Accessibility & Assistance Controls Toolbar */}
+          <div className="mt-6 pt-5 border-t border-white/10 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            <div className="p-2.5 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
+              <div className="text-xs font-semibold flex items-center gap-1.5">
+                <Accessibility size={14} className="text-[#00E5FF]" />
+                <span>♿ Wheelchair / Ramp</span>
+              </div>
+              <Switch checked={wheelchair} onCheckedChange={setWheelchair} />
+            </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 stagger-in">
-            <StatCard icon={<Globe size={18} />} label="National Hubs" value={hubs.length || 22} testId="stat-hubs" />
-            <StatCard icon={<Building2 size={18} />} label="KIIT Campuses" value={campuses.length || 10} testId="stat-campuses" />
-            <StatCard icon={<Accessibility size={18} />} label="Accessible" value={routes.filter(r => r.accessible).length} testId="stat-access" />
-            <StatCard icon={<ShieldPlus size={18} />} label="Police nearby" value={police.length} testId="stat-police" />
+            <div className="p-2.5 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
+              <div className="text-xs font-semibold flex items-center gap-1.5">
+                <ShieldCheck size={14} className="text-cyan-400" />
+                <span>🌙 Night Safe Route</span>
+              </div>
+              <Switch checked={nightSafe} onCheckedChange={setNightSafe} />
+            </div>
+
+            <div className="p-2.5 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
+              <div className="text-xs font-semibold flex items-center gap-1.5">
+                <Users size={14} className="text-amber-400" />
+                <span>👴 Elderly Priority</span>
+              </div>
+              <Switch checked={elderlyPriority} onCheckedChange={setElderlyPriority} />
+            </div>
+
+            <div className="p-2.5 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
+              <div className="text-xs font-semibold flex items-center gap-1.5">
+                <Volume2 size={14} className="text-emerald-400" />
+                <span>🔊 Voice Guidance</span>
+              </div>
+              <Switch checked={voiceAssistance} onCheckedChange={(val) => {
+                setVoiceAssistance(val);
+                if (val) speakAnnouncement("Voice accessibility guidance activated.");
+              }} />
+            </div>
+
+            <div className="p-2.5 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
+              <div className="text-xs font-semibold flex items-center gap-1.5">
+                <span>👁️ High Contrast</span>
+              </div>
+              <Switch checked={highContrast} onCheckedChange={setHighContrast} />
+            </div>
           </div>
-        </section>
+        </div>
 
-        {/* Right: Road Journey Planner & Turn-by-Turn Navigation */}
-        <aside className="space-y-4">
-          <Card className="mova-glass" data-testid="plan-card">
-            <CardContent className="p-5 space-y-4">
-              <div>
-                <div className="text-xs uppercase tracking-[0.25em] opacity-60">Street Road Navigation Engine</div>
-                <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: "Outfit" }}>
-                  Road Routes, {user?.name?.split(" ")[0]}
-                </h2>
+        {/* Main Grid: Left Map & Route Explorer, Right Origin/Destination Controls */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Map Column */}
+          <div className="lg:col-span-7 space-y-6">
+            {/* Interactive Map Mode Indicator */}
+            {mapClickTarget && (
+              <div className="p-3 rounded-2xl bg-[#00E5FF]/20 border border-[#00E5FF] text-[#00E5FF] text-xs font-bold flex items-center justify-between animate-pulse">
+                <span className="flex items-center gap-2">
+                  <MousePointerClick size={16} /> Click anywhere on the map to set your {mapClickTarget.toUpperCase()}
+                </span>
+                <Button size="sm" variant="ghost" onClick={() => setMapClickTarget(null)} className="h-6 text-xs text-white">
+                  Cancel
+                </Button>
               </div>
+            )}
 
-              {/* Mode Selector */}
-              <div className="flex bg-white/5 p-1 rounded-xl border border-white/10 gap-1" data-testid="mode-selector">
-                <button
-                  type="button"
-                  onClick={() => setTravelMode("transit")}
-                  className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
-                    travelMode === "transit" ? "bg-[#00E5FF] text-black shadow-md" : "hover:text-[#00E5FF] opacity-70"
-                  }`}
-                >
-                  <Bus size={14} /> Bus / Transit
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTravelMode("driving")}
-                  className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
-                    travelMode === "driving" ? "bg-[#00E5FF] text-black shadow-md" : "hover:text-[#00E5FF] opacity-70"
-                  }`}
-                >
-                  <Car size={14} /> Drive / Cab
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTravelMode("walking")}
-                  className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
-                    travelMode === "walking" ? "bg-[#00E5FF] text-black shadow-md" : "hover:text-[#00E5FF] opacity-70"
-                  }`}
-                >
-                  <Footprints size={14} /> Walk
-                </button>
-              </div>
-
-              {/* Input Fields with Interactive Place Suggestions Dropdown */}
-              <div className="space-y-3">
-                
-                {/* FROM SECTION */}
-                <div className="space-y-1.5 relative" ref={d1ContainerRef}>
-                  <Label htmlFor="d1">From (Origin)</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="d1"
-                      value={d1Query}
-                      onChange={handleD1Change}
-                      onFocus={() => setShowD1Menu(true)}
-                      placeholder="e.g. KIIT Campus 3, Kolkata, or Delhi Airport"
-                      data-testid="d1-input"
-                      autoComplete="off"
-                    />
-                    <VoiceInput onResult={(t) => { setD1Query(t); }} testId="d1-voice" />
+            <Card className="mova-glass overflow-hidden border-white/10" data-testid="map-card">
+              <CardContent className="p-3 sm:p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-xs uppercase tracking-wider font-semibold opacity-70 flex items-center gap-1.5">
+                    <Route size={14} className="text-[#00E5FF]" /> Live OSRM Road & Navigation Map
                   </div>
-
-                  {/* Suggestions Dropdown Menu for FROM (Does NOT auto-write!) */}
-                  {showD1Menu && d1Suggestions.length > 0 && (
-                    <div className="absolute left-0 right-0 top-full mt-1 z-[2000] bg-[#0a0a10]/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl overflow-hidden max-h-56 overflow-y-auto">
-                      <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-[#00E5FF] font-semibold bg-white/5 border-b border-white/10">
-                        Suggested Places (Click to Select)
-                      </div>
-                      {d1Suggestions.map((loc, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => selectD1Suggestion(loc)}
-                          className="w-full text-left px-3 py-2 text-xs hover:bg-[#00E5FF]/15 hover:text-[#00E5FF] transition-colors flex items-center justify-between border-b border-white/5 last:border-0"
-                        >
-                          <div className="flex items-center gap-2 truncate pr-2">
-                            {loc.category === "Airport" && <Plane size={13} className="text-[#00E5FF] shrink-0" />}
-                            {loc.category === "Railway Station" && <Train size={13} className="text-[#00E5FF] shrink-0" />}
-                            {loc.category === "KIIT Campus" && <Building2 size={13} className="text-[#00E5FF] shrink-0" />}
-                            {(!loc.category || (loc.category !== "Airport" && loc.category !== "Railway Station" && loc.category !== "KIIT Campus")) && (
-                              <MapPin size={13} className="text-[#00E5FF] shrink-0" />
-                            )}
-                            <span className="truncate font-medium">{loc.short || loc.name}</span>
-                          </div>
-                          {loc.category && (
-                            <span className="text-[10px] opacity-60 bg-white/10 px-1.5 py-0.5 rounded shrink-0">
-                              {loc.category}
-                            </span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
+                  {journey?.isRoad && (
+                    <Badge className="bg-[#00E5FF] text-black font-bold text-[10px]">
+                      OSRM Street Track Active
+                    </Badge>
                   )}
                 </div>
 
-                {/* TO SECTION */}
-                <div className="space-y-1.5 relative" ref={d2ContainerRef}>
-                  <Label htmlFor="d2">To (Destination)</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="d2"
-                      value={d2Query}
-                      onChange={handleD2Change}
-                      onFocus={() => setShowD2Menu(true)}
-                      placeholder="e.g. Campus 15 (KIMS) or Howrah Station"
-                      data-testid="d2-input"
-                      autoComplete="off"
-                    />
-                    <VoiceInput onResult={(t) => { setD2Query(t); }} testId="d2-voice" />
-                  </div>
+                <MapView
+                  theme={theme}
+                  stops={stops}
+                  campuses={campuses}
+                  hubs={hubs}
+                  police={police}
+                  roadCoordinates={roadData?.coordinates}
+                  d1={d1}
+                  d2={d2}
+                  onSelectStop={(st) => {
+                    if (!d1) {
+                      setD1(st);
+                      setD1Query(st.name);
+                      toast.success(`Origin set: ${st.name}`);
+                    } else {
+                      setD2(st);
+                      setD2Query(st.name);
+                      toast.success(`Destination set: ${st.name}`);
+                    }
+                  }}
+                  onMapClick={handleMapCoordinatePick}
+                  height="52vh"
+                />
+              </CardContent>
+            </Card>
 
-                  {/* Suggestions Dropdown Menu for TO (Does NOT auto-write!) */}
-                  {showD2Menu && d2Suggestions.length > 0 && (
-                    <div className="absolute left-0 right-0 top-full mt-1 z-[2000] bg-[#0a0a10]/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl overflow-hidden max-h-56 overflow-y-auto">
-                      <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-[#00E5FF] font-semibold bg-white/5 border-b border-white/10">
-                        Suggested Places (Click to Select)
-                      </div>
-                      {d2Suggestions.map((loc, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => selectD2Suggestion(loc)}
-                          className="w-full text-left px-3 py-2 text-xs hover:bg-[#00E5FF]/15 hover:text-[#00E5FF] transition-colors flex items-center justify-between border-b border-white/5 last:border-0"
-                        >
-                          <div className="flex items-center gap-2 truncate pr-2">
-                            {loc.category === "Airport" && <Plane size={13} className="text-[#00E5FF] shrink-0" />}
-                            {loc.category === "Railway Station" && <Train size={13} className="text-[#00E5FF] shrink-0" />}
-                            {loc.category === "KIIT Campus" && <Building2 size={13} className="text-[#00E5FF] shrink-0" />}
-                            {(!loc.category || (loc.category !== "Airport" && loc.category !== "Railway Station" && loc.category !== "KIIT Campus")) && (
-                              <MapPin size={13} className="text-[#00E5FF] shrink-0" />
-                            )}
-                            <span className="truncate font-medium">{loc.short || loc.name}</span>
-                          </div>
-                          {loc.category && (
-                            <span className="text-[10px] opacity-60 bg-white/10 px-1.5 py-0.5 rounded shrink-0">
-                              {loc.category}
-                            </span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+            {/* Quick Campus & Indian Transit Hub Selector Chips */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wider opacity-70">
+                  Quick Select Stops & Landmarks
+                </span>
+                <div className="flex gap-1">
+                  {[
+                    { id: "hubs", label: "National Hubs" },
+                    { id: "campuses", label: "KIIT Campuses" },
+                    { id: "stops", label: "City Stops" },
+                  ].map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => setChipTab(t.id)}
+                      className={`text-xs px-2.5 py-1 rounded-full border transition-all ${
+                        chipTab === t.id
+                          ? "bg-[#00E5FF] text-black border-[#00E5FF] font-bold"
+                          : "border-white/10 opacity-70 hover:opacity-100"
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
                 </div>
+              </div>
 
-                {/* Quick Selection Chips Tabs */}
-                <div className="space-y-2 pt-1">
-                  <div className="flex items-center gap-2 border-b border-white/10 pb-1 text-xs">
-                    <button
-                      type="button"
-                      onClick={() => setChipTab("hubs")}
-                      className={`pb-1 font-medium transition-colors ${
-                        chipTab === "hubs" ? "text-[#00E5FF] border-b-2 border-[#00E5FF]" : "opacity-60 hover:opacity-100"
-                      }`}
-                    >
-                      🇮🇳 Pan-India Cities
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setChipTab("campuses")}
-                      className={`pb-1 font-medium transition-colors ${
-                        chipTab === "campuses" ? "text-[#00E5FF] border-b-2 border-[#00E5FF]" : "opacity-60 hover:opacity-100"
-                      }`}
-                    >
-                      🎓 KIIT Campuses
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setChipTab("stops")}
-                      className={`pb-1 font-medium transition-colors ${
-                        chipTab === "stops" ? "text-[#00E5FF] border-b-2 border-[#00E5FF]" : "opacity-60 hover:opacity-100"
-                      }`}
-                    >
-                      🚏 Bus Stops
-                    </button>
-                  </div>
+              <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-1">
+                {(chipTab === "hubs" ? hubs : chipTab === "campuses" ? campuses : stops).map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      if (!d1) {
+                        setD1(item);
+                        setD1Query(item.name);
+                        toast.success(`From: ${item.short || item.name}`);
+                      } else {
+                        setD2(item);
+                        setD2Query(item.name);
+                        toast.success(`To: ${item.short || item.name}`);
+                      }
+                    }}
+                    className="text-xs px-2.5 py-1 rounded-xl bg-white/5 border border-white/10 hover:border-[#00E5FF]/50 transition-all flex items-center gap-1.5"
+                  >
+                    {item.category === "Airport" ? <Plane size={11} className="text-sky-400" /> :
+                     item.category === "Railway Station" ? <Train size={11} className="text-amber-400" /> :
+                     item.category === "KIIT Campus" ? <Building2 size={11} className="text-[#00E5FF]" /> :
+                     <MapPin size={11} className="text-emerald-400" />}
+                    <span>{item.short || item.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
 
-                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1" data-testid="quick-chips">
-                    {activeChips.map((loc, idx) => (
+          {/* Right Column: Origin/Destination Search, Fare, and Active Routes */}
+          <div className="lg:col-span-5 space-y-6">
+            <Card className="mova-glass border-white/10">
+              <CardContent className="p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-bold tracking-tight" style={{ fontFamily: "Outfit" }}>
+                    Plan Accessible Journey
+                  </h2>
+                  <div className="flex gap-1 bg-black/40 p-1 rounded-xl border border-white/10">
+                    {[
+                      { id: "transit", icon: <Bus size={13} />, label: "Bus" },
+                      { id: "driving", icon: <Car size={13} />, label: "Van" },
+                      { id: "walking", icon: <Footprints size={13} />, label: "Walk" },
+                    ].map((m) => (
                       <button
-                        key={idx}
-                        type="button"
-                        onClick={() => {
-                          const item = { name: loc.name, lat: loc.lat, lng: loc.lng };
-                          if (!d1Query) {
-                            setD1Query(loc.short || loc.name);
-                            setD1(item);
-                          } else {
-                            setD2Query(loc.short || loc.name);
-                            setD2(item);
-                          }
-                        }}
-                        className="text-[11px] px-2.5 py-1 rounded-full border border-white/10 hover:border-[#00E5FF]/50 hover:text-[#00E5FF] transition-colors flex items-center gap-1 bg-white/5"
-                        data-testid={`chip-${idx}`}
+                        key={m.id}
+                        onClick={() => setTravelMode(m.id)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all ${
+                          travelMode === m.id
+                            ? "bg-[#00E5FF] text-black font-bold"
+                            : "opacity-60 hover:opacity-100"
+                        }`}
                       >
-                        {loc.category === "Airport" && <Plane size={11} />}
-                        {loc.category === "Railway Station" && <Train size={11} />}
-                        {loc.short || loc.name}
+                        {m.icon} {m.label}
                       </button>
                     ))}
                   </div>
                 </div>
-              </div>
 
-              {/* Toggles */}
-              <div className="grid grid-cols-2 gap-3 pt-1">
-                <label className="flex items-center gap-2 text-sm" data-testid="toggle-wheelchair">
-                  <Switch checked={wheelchair} onCheckedChange={setWheelchair} /> Wheelchair Access
-                </label>
-                <label className="flex items-center gap-2 text-sm" data-testid="toggle-night">
-                  <Switch checked={nightSafe} onCheckedChange={setNightSafe} /> Night-Safe Ride
-                </label>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex gap-2">
-                <Button
-                  onClick={plan}
-                  className="pill-btn bg-[#00E5FF] text-black hover:bg-[#00B8CC] flex-1 font-semibold"
-                  data-testid="plan-route-btn"
-                >
-                  <Navigation size={16} className="mr-1.5" /> Calculate Road Route
-                </Button>
-                <Button variant="outline" className="pill-btn" onClick={() => setSafetyOpen(true)} data-testid="open-safety-btn">
-                  Safety Check-in
-                </Button>
-              </div>
-
-              {/* Google Maps / Apple Maps Direct Links */}
-              <div className="pt-2 border-t border-white/10 space-y-2">
-                <div className="text-xs uppercase tracking-[0.2em] opacity-60">External Navigation Links</div>
-                <div className="grid grid-cols-2 gap-2">
-                  <a
-                    href={navUrls.google}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-600/90 hover:bg-emerald-500 text-white text-xs font-semibold shadow-sm transition-all"
-                    data-testid="gmaps-btn"
-                  >
-                    🗺️ Google Maps <ExternalLink size={12} />
-                  </a>
-                  <a
-                    href={navUrls.apple}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-semibold border border-white/20 shadow-sm transition-all"
-                    data-testid="apple-maps-btn"
-                  >
-                    🍎 Apple Maps <ExternalLink size={12} />
-                  </a>
-                </div>
-              </div>
-
-              {/* Journey Details & Road Navigation Summary */}
-              {journey && (
-                <div className="rounded-2xl border border-[#00E5FF]/25 bg-[#00E5FF]/5 p-4 mt-2 space-y-3" data-testid="fare-card">
-                  <div className="flex items-center justify-between">
-                    <div className="text-xs uppercase tracking-[0.25em] opacity-70">
-                      {journey.isRoad ? "🛤️ OpenStreetMap Road Navigation" : "Direct Route Summary"}
-                    </div>
-                    {journey.isRoad && (
-                      <Badge className="bg-[#00E5FF] text-black font-bold text-[10px]">
-                        Road Match
-                      </Badge>
-                    )}
+                {/* From Origin Input with Non-Autowriting Suggestions */}
+                <div ref={d1ContainerRef} className="relative space-y-1.5">
+                  <div className="flex items-center justify-between text-xs opacity-70">
+                    <Label className="font-semibold flex items-center gap-1">
+                      <MapPin size={13} className="text-[#00E5FF]" /> From (Origin)
+                    </Label>
+                    <button
+                      type="button"
+                      onClick={() => setMapClickTarget("origin")}
+                      className="text-[#00E5FF] hover:underline flex items-center gap-0.5"
+                    >
+                      <MousePointerClick size={11} /> Pick from Map
+                    </button>
                   </div>
-                  <div className="flex items-end gap-4 flex-wrap">
-                    <div className="flex items-baseline">
-                      <IndianRupee size={22} className="text-[#00E5FF]" />
-                      <span className="text-4xl font-bold" style={{ fontFamily: "Outfit" }} data-testid="fare-amount">
-                        {journey.fare}
-                      </span>
-                    </div>
-                    <div className="text-sm opacity-80 space-y-0.5">
-                      <div className="flex items-center gap-1.5 font-medium text-[#00E5FF]">
-                        <Clock size={14} /> ~{journey.estMinutes} mins ({journey.km} km)
-                      </div>
-                      <div className="flex items-center gap-1.5 opacity-70 text-xs truncate max-w-[240px]">
-                        <span data-testid="fare-from">{d1Query || d1?.name}</span>
-                        <span>→</span>
-                        <span data-testid="fare-to">{d2Query || d2?.name}</span>
-                      </div>
-                    </div>
+                  <div className="relative">
+                    <Input
+                      placeholder="Type origin (e.g. Campus 3, Airport, Delhi)..."
+                      value={d1Query}
+                      onChange={(e) => {
+                        setD1Query(e.target.value);
+                        setShowD1Menu(true);
+                      }}
+                      onFocus={() => setShowD1Menu(true)}
+                      className="bg-black/50 border-white/10 rounded-xl pr-10"
+                    />
+                    <VoiceInput onTranscript={(txt) => {
+                      setD1Query(txt);
+                      setShowD1Menu(true);
+                    }} />
                   </div>
 
-                  {/* Turn-by-Turn Navigation Steps Card */}
-                  {journey.steps && journey.steps.length > 0 && (
-                    <div className="pt-2 border-t border-white/10 space-y-1.5">
-                      <div className="text-[11px] font-semibold text-[#00E5FF] flex items-center gap-1">
-                        <CornerUpRight size={13} /> Turn-by-Turn Road Directions:
-                      </div>
-                      <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
-                        {journey.steps.map((st, idx) => (
-                          <div key={idx} className="text-[11px] opacity-80 flex items-center justify-between bg-white/5 px-2 py-1 rounded-lg">
-                            <span>{st.instruction}</span>
-                            {st.distance_m > 0 && <span className="opacity-60 text-[10px] ml-2">{st.distance_m}m</span>}
+                  {/* Suggestion Dropdown */}
+                  {showD1Menu && d1Suggestions.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 mt-1.5 z-50 rounded-2xl mova-glass border border-white/20 shadow-2xl p-2 space-y-1 max-h-56 overflow-y-auto">
+                      {d1Suggestions.map((item, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => {
+                            setD1(item);
+                            setD1Query(item.name);
+                            setShowD1Menu(false);
+                            toast.success(`Origin: ${item.name}`);
+                          }}
+                          className="w-full text-left p-2.5 rounded-xl hover:bg-[#00E5FF]/20 transition-all flex items-start gap-2.5 text-xs group"
+                        >
+                          <MapPin size={14} className="text-[#00E5FF] shrink-0 mt-0.5" />
+                          <div>
+                            <div className="font-bold text-white group-hover:text-[#00E5FF]">{item.short || item.name}</div>
+                            <div className="opacity-60 text-[10px] truncate">{item.name}</div>
                           </div>
-                        ))}
-                      </div>
+                        </button>
+                      ))}
                     </div>
                   )}
                 </div>
-              )}
-            </CardContent>
-          </Card>
 
-          {/* Active Transit Routes */}
-          <Card className="mova-glass" data-testid="suggested-routes">
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-semibold tracking-tight" style={{ fontFamily: "Outfit" }}>
-                  Active Transit Routes
-                </h3>
-                <Badge variant="outline" className="border-white/15">
-                  <Clock size={12} className="mr-1" /> Live
-                </Badge>
-              </div>
-              <div className="space-y-2 stagger-in">
-                {suggested.length === 0 && (
-                  <div className="text-sm opacity-60">No routes match your filters.</div>
-                )}
-                {suggested.map((r) => {
-                  const rStops = r.stops.map(sid => stops.find(s => s.id === sid)).filter(Boolean);
-                  let rkm = 0;
-                  for (let i = 1; i < rStops.length; i++) rkm += distKm(rStops[i-1], rStops[i]);
-                  const rFare = computeFare(rkm, { accessible: r.accessible, night: r.name.toLowerCase().includes("night") });
-                  return (
-                    <div key={r.id} className="p-3 rounded-xl border border-white/10 hover:border-[#00E5FF]/40 transition-colors"
-                      data-testid={`route-item-${r.id}`}>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="font-semibold">{r.name}</div>
-                          <div className="text-xs opacity-70">{r.vehicle} · {r.stops.length} stops · {rkm.toFixed(1)} km</div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-lg font-bold text-[#00E5FF]" style={{ fontFamily: "Outfit" }}>{r.eta_min}m</div>
-                          <div className="text-xs opacity-80 inline-flex items-center gap-0.5" data-testid={`route-fare-${r.id}`}>
-                            <IndianRupee size={11} />{rFare}
+                {/* To Destination Input with Non-Autowriting Suggestions */}
+                <div ref={d2ContainerRef} className="relative space-y-1.5">
+                  <div className="flex items-center justify-between text-xs opacity-70">
+                    <Label className="font-semibold flex items-center gap-1">
+                      <Navigation size={13} className="text-emerald-400" /> To (Destination)
+                    </Label>
+                    <button
+                      type="button"
+                      onClick={() => setMapClickTarget("destination")}
+                      className="text-emerald-400 hover:underline flex items-center gap-0.5"
+                    >
+                      <MousePointerClick size={11} /> Pick from Map
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <Input
+                      placeholder="Type destination (e.g. KIMS Hospital, Howrah)..."
+                      value={d2Query}
+                      onChange={(e) => {
+                        setD2Query(e.target.value);
+                        setShowD2Menu(true);
+                      }}
+                      onFocus={() => setShowD2Menu(true)}
+                      className="bg-black/50 border-white/10 rounded-xl pr-10"
+                    />
+                    <VoiceInput onTranscript={(txt) => {
+                      setD2Query(txt);
+                      setShowD2Menu(true);
+                    }} />
+                  </div>
+
+                  {/* Suggestion Dropdown */}
+                  {showD2Menu && d2Suggestions.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 mt-1.5 z-50 rounded-2xl mova-glass border border-white/20 shadow-2xl p-2 space-y-1 max-h-56 overflow-y-auto">
+                      {d2Suggestions.map((item, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => {
+                            setD2(item);
+                            setD2Query(item.name);
+                            setShowD2Menu(false);
+                            toast.success(`Destination: ${item.name}`);
+                          }}
+                          className="w-full text-left p-2.5 rounded-xl hover:bg-emerald-500/20 transition-all flex items-start gap-2.5 text-xs group"
+                        >
+                          <Navigation size={14} className="text-emerald-400 shrink-0 mt-0.5" />
+                          <div>
+                            <div className="font-bold text-white group-hover:text-emerald-300">{item.short || item.name}</div>
+                            <div className="opacity-60 text-[10px] truncate">{item.name}</div>
                           </div>
-                          {r.accessible && (
-                            <div className="text-[10px] inline-flex items-center gap-1 opacity-80 ml-2">
-                              <Accessibility size={11} /> Accessible
-                            </div>
-                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Journey Cost & Summary Card */}
+                {journey && (
+                  <div className="p-4 rounded-2xl border border-[#00E5FF]/30 bg-[#00E5FF]/5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs uppercase tracking-wider font-semibold text-[#00E5FF]">
+                        {journey.isRoad ? "🛣️ OSRM Road-Following Route" : "Calculated Transit Summary"}
+                      </span>
+                      <span className="text-xs font-bold px-2 py-0.5 rounded bg-white/10">
+                        {travelMode.toUpperCase()}
+                      </span>
+                    </div>
+
+                    <div className="flex items-baseline justify-between">
+                      <div className="flex items-baseline">
+                        <IndianRupee size={20} className="text-[#00E5FF]" />
+                        <span className="text-3xl font-extrabold text-white" style={{ fontFamily: "Outfit" }}>
+                          {journey.fare}
+                        </span>
+                      </div>
+                      <div className="text-right text-xs opacity-80">
+                        <div className="font-bold text-white flex items-center gap-1">
+                          <Clock size={13} className="text-[#00E5FF]" /> ~{journey.estMinutes} mins ({journey.km} km)
                         </div>
+                        <div className="opacity-60 text-[10px] mt-0.5">Includes accessibility priority</div>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-              <div className="mt-4 text-xs opacity-60 inline-flex items-center gap-1.5">
-                <WifiOff size={12} /> Tip: Offline mode caches your active route and emergency contacts.
-              </div>
-            </CardContent>
-          </Card>
-        </aside>
+
+                    {/* Turn-by-Turn Steps */}
+                    {journey.steps && journey.steps.length > 0 && (
+                      <div className="pt-2 border-t border-white/10 space-y-1">
+                        <div className="text-[11px] font-bold text-[#00E5FF] flex items-center gap-1">
+                          <CornerUpRight size={12} /> Turn-by-Turn Street Directions:
+                        </div>
+                        <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
+                          {journey.steps.map((st, idx) => (
+                            <div key={idx} className="text-[11px] opacity-80 flex items-center justify-between bg-white/5 px-2 py-1 rounded-lg">
+                              <span>{st.instruction}</span>
+                              {st.distance_m > 0 && <span className="opacity-50 text-[10px] ml-1">{st.distance_m}m</span>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Module 3 & 5: Active Transit Routes with Live Crowding & Arrival Alerts */}
+            <Card className="mova-glass border-white/10" data-testid="suggested-routes">
+              <CardContent className="p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-bold tracking-tight" style={{ fontFamily: "Outfit" }}>
+                    Active Accessible Transit Lines
+                  </h3>
+                  <Badge variant="outline" className="border-white/20 text-xs">
+                    <Clock size={11} className="mr-1 text-[#00E5FF]" /> Live Fleet
+                  </Badge>
+                </div>
+
+                <div className="space-y-3">
+                  {suggested.map((r) => (
+                    <div
+                      key={r.id}
+                      className="p-3.5 rounded-2xl border border-white/10 hover:border-[#00E5FF]/50 transition-all bg-black/30 space-y-2"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="font-bold text-sm text-white flex items-center gap-2">
+                            {r.name}
+                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/10 opacity-70">
+                              {r.vehicle_no || r.id}
+                            </span>
+                          </div>
+                          <div className="text-xs opacity-70 mt-0.5">{r.vehicle} · {r.frequency}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-base font-extrabold text-[#00E5FF]" style={{ fontFamily: "Outfit" }}>
+                            {r.eta_min}m ETA
+                          </div>
+                          <Badge variant="outline" className={`text-[10px] ${
+                            r.crowd_level === "High" ? "border-red-500 text-red-400" :
+                            r.crowd_level === "Moderate" ? "border-amber-500 text-amber-400" : "border-emerald-500 text-emerald-400"
+                          }`}>
+                            {r.crowd_level || "Low"} Crowd
+                          </Badge>
+                        </div>
+                      </div>
+
+                      {/* Crowding, Seats, and Wheelchair details (Module 3) */}
+                      <div className="flex items-center justify-between text-xs pt-1 border-t border-white/5 opacity-80">
+                        <div className="flex items-center gap-2">
+                          <span>💺 {r.available_seats ?? 15} seats</span>
+                          <span>♿ {r.wheelchair_spaces ?? 2} wheelchair spaces</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => simulateArrivalAlert(r)}
+                          className="text-[#00E5FF] hover:underline flex items-center gap-1 text-[11px] font-semibold"
+                        >
+                          <Bell size={11} /> Simulate Alert
+                        </button>
+                      </div>
+
+                      {/* Detour Alert Banner if Present (Module 5) */}
+                      {r.detour_alert && (
+                        <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-1.5">
+                          <AlertTriangle size={13} className="shrink-0" />
+                          <span>{r.detour_alert}</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       </main>
 
+      {/* Module 2: Boarding Assistance Request Dialog */}
+      <Dialog open={assistOpen} onOpenChange={setAssistOpen}>
+        <DialogContent className="mova-glass border-white/20 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold flex items-center gap-2 text-[#00E5FF]">
+              <Accessibility size={20} /> Request Wheelchair / Boarding Aid
+            </DialogTitle>
+            <DialogDescription className="text-sm opacity-70">
+              Notifies the bus driver and station ramp assistant to prepare prior to vehicle arrival.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label className="text-xs font-semibold uppercase opacity-70 block mb-1">Select Transit Route</Label>
+              <select
+                value={assistRouteId}
+                onChange={(e) => setAssistRouteId(e.target.value)}
+                className="w-full p-2.5 rounded-xl bg-black/60 border border-white/20 text-sm text-white"
+              >
+                {routes.map((r) => (
+                  <option key={r.id} value={r.id} className="bg-[#12121A] text-white">
+                    {r.name} ({r.vehicle})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <Label className="text-xs font-semibold uppercase opacity-70 block mb-1">Your Boarding Stop</Label>
+              <Input
+                placeholder="e.g. Campus 3 Gate / KIIT Square"
+                value={assistStop}
+                onChange={(e) => setAssistStop(e.target.value)}
+                className="bg-black/60 border-white/20 rounded-xl"
+              />
+            </div>
+
+            <div>
+              <Label className="text-xs font-semibold uppercase opacity-70 block mb-1">Type of Assistance</Label>
+              <select
+                value={assistType}
+                onChange={(e) => setAssistType(e.target.value)}
+                className="w-full p-2.5 rounded-xl bg-black/60 border border-white/20 text-sm text-white"
+              >
+                <option value="Wheelchair Ramp Assistance" className="bg-[#12121A] text-white">♿ Wheelchair Ramp Assistance</option>
+                <option value="Elderly Boarding Help" className="bg-[#12121A] text-white">👴 Elderly Boarding Help</option>
+                <option value="Late Night Escort Aid" className="bg-[#12121A] text-white">🌙 Late-Night Escort Aid</option>
+                <option value="Visual / Audio Guidance" className="bg-[#12121A] text-white">👁️ Visual / Audio Guidance</option>
+              </select>
+            </div>
+
+            <div>
+              <Label className="text-xs font-semibold uppercase opacity-70 block mb-1">Special Note for Driver (Optional)</Label>
+              <Input
+                placeholder="e.g. Waiting at yellow bench near gate"
+                value={assistNote}
+                onChange={(e) => setAssistNote(e.target.value)}
+                className="bg-black/60 border-white/20 rounded-xl"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAssistOpen(false)} className="pill-btn border-white/20">
+              Cancel
+            </Button>
+            <Button onClick={handleAssistanceSubmit} className="pill-btn bg-[#00E5FF] text-black font-bold hover:bg-[#00B8CC]">
+              📢 Dispatch to Driver
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Module 3: Crowding & Delay User Reporting Dialog */}
+      <Dialog open={reportOpen} onOpenChange={setReportOpen}>
+        <DialogContent className="mova-glass border-white/20 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold flex items-center gap-2 text-amber-400">
+              <Users size={20} /> Report Live Crowding & Delays
+            </DialogTitle>
+            <DialogDescription className="text-sm opacity-70">
+              Help your campus community with real-time transit crowding conditions.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label className="text-xs font-semibold uppercase opacity-70 block mb-1">Select Transit Line</Label>
+              <select
+                value={reportRouteId}
+                onChange={(e) => setReportRouteId(e.target.value)}
+                className="w-full p-2.5 rounded-xl bg-black/60 border border-white/20 text-sm text-white"
+              >
+                {routes.map((r) => (
+                  <option key={r.id} value={r.id} className="bg-[#12121A] text-white">
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <Label className="text-xs font-semibold uppercase opacity-70 block mb-1">Current Crowding Level</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { val: "Low", label: "🟢 Low" },
+                  { val: "Moderate", label: "🟡 Moderate" },
+                  { val: "High", label: "🔴 High" },
+                ].map((c) => (
+                  <button
+                    key={c.val}
+                    type="button"
+                    onClick={() => setReportCrowd(c.val)}
+                    className={`p-2 rounded-xl text-xs font-bold border transition-all ${
+                      reportCrowd === c.val
+                        ? "bg-[#00E5FF] text-black border-[#00E5FF]"
+                        : "bg-black/50 border-white/10 opacity-70 hover:opacity-100"
+                    }`}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-xs font-semibold uppercase opacity-70 block mb-1">Observed Delay (Minutes)</Label>
+              <Input
+                type="number"
+                min="0"
+                max="60"
+                value={reportDelay}
+                onChange={(e) => setReportDelay(e.target.value)}
+                className="bg-black/60 border-white/20 rounded-xl"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReportOpen(false)} className="pill-btn border-white/20">
+              Cancel
+            </Button>
+            <Button onClick={handleReportSubmit} className="pill-btn bg-amber-400 text-black font-bold hover:bg-amber-500">
+              Submit Live Report
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Global Safety & SOS Overlays */}
       <SOSButton userLoc={userLoc} police={police} onOpenSafety={() => setSafetyOpen(true)} />
       <SafetyCheckInDialog open={safetyOpen} onOpenChange={setSafetyOpen} />
       <BugReportDialog open={bugOpen} onOpenChange={setBugOpen} />
-    </div>
-  );
-}
-
-function StatCard({ icon, label, value, testId }) {
-  return (
-    <div className="p-4 rounded-2xl mova-glass border" data-testid={testId}>
-      <div className="flex items-center justify-between opacity-80">
-        <span className="text-xs uppercase tracking-[0.2em]">{label}</span>
-        <span className="text-[#00E5FF]">{icon}</span>
-      </div>
-      <div className="text-3xl font-bold mt-1" style={{ fontFamily: "Outfit" }}>{value}</div>
     </div>
   );
 }

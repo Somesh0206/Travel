@@ -9,6 +9,8 @@ import Home from "@/pages/Home";
 import AdminDashboard from "@/pages/AdminDashboard";
 import Offline from "@/pages/Offline";
 
+import DriverDashboard from "@/pages/DriverDashboard";
+
 function ThemedToaster() {
   const { theme } = useAuth();
   return <Toaster theme={theme === "light" ? "light" : "dark"} position="top-right" richColors closeButton />;
@@ -23,6 +25,9 @@ function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/offline" element={<Offline />} />
+            <Route path="/driver" element={
+              <ProtectedRoute><DriverDashboard /></ProtectedRoute>
+            } />
             <Route path="/" element={
               <ProtectedRoute><Home /></ProtectedRoute>
             } />
