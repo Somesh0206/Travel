@@ -5,7 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Bus } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Bus, ShieldCheck } from "lucide-react";
+import { toast } from "sonner";
 
 export default function Login() {
   const { login } = useAuth();
@@ -24,6 +26,21 @@ export default function Login() {
     else setErr(r.error);
   };
 
+  const handleQuickAdmin = async () => {
+    setEmail("admin@mova.app");
+    setPassword("admin");
+    setErr("");
+    setLoading(true);
+    const r = await login("admin@mova.app", "admin");
+    setLoading(false);
+    if (r.ok) {
+      toast.success("Admin authenticated successfully!");
+      nav("/admin");
+    } else {
+      setErr(r.error);
+    }
+  };
+
   return (
     <div className="min-h-screen mova-hero-grid grid place-items-center p-4">
       <Card className="w-full max-w-md mova-glass" data-testid="login-card">
@@ -37,13 +54,15 @@ export default function Login() {
         <CardContent>
           <form onSubmit={submit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required
+              <Label htmlFor="email">Email or Username</Label>
+              <Input id="email" type="text" value={email} onChange={(e) => setEmail(e.target.value)} required
+                placeholder="e.g. user@mova.app or admin"
                 autoComplete="email" data-testid="login-email" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="pw">Password</Label>
               <Input id="pw" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required
+                placeholder="Enter your password"
                 autoComplete="current-password" data-testid="login-password" />
             </div>
             {err && <div className="text-sm text-[#FF3B30]" data-testid="login-error">{err}</div>}
@@ -56,12 +75,29 @@ export default function Login() {
             New to MOVA?{" "}
             <Link to="/register" className="text-[#00E5FF] hover:underline" data-testid="link-register">Create account</Link>
           </div>
-          <div className="mt-5 p-3 rounded-xl border border-white/10 bg-[#12121A]/60" data-testid="admin-hint">
-            <div className="text-[10px] uppercase tracking-[0.25em] opacity-60 mb-1">Admin console (locked)</div>
-            <div className="text-xs opacity-80">Only authorised staff can open <span className="font-mono">/admin</span>.</div>
-            <div className="text-xs opacity-70 mt-1">
-              Demo: <span className="font-mono">admin@mova.app</span> / <span className="font-mono">mova@admin123</span>
+          
+          {/* Quick Admin Access section with password 'admin' */}
+          <div className="mt-5 p-3.5 rounded-2xl border border-white/10 bg-[#12121A]/80 space-y-2" data-testid="admin-hint">
+            <div className="flex items-center justify-between">
+              <div className="text-[10px] uppercase tracking-[0.25em] text-[#00E5FF] font-semibold flex items-center gap-1">
+                <ShieldCheck size={13} /> Staff Admin Portal
+              </div>
+              <Badge variant="outline" className="text-[10px] border-[#00E5FF]/40 text-[#00E5FF]">
+                Password: admin
+              </Badge>
             </div>
+            <div className="text-xs opacity-75">
+              Authorised staff login credential: <span className="font-mono text-[#00E5FF]">admin@mova.app</span> / password <span className="font-mono text-[#00E5FF]">admin</span>.
+            </div>
+            <Button
+              type="button"
+              onClick={handleQuickAdmin}
+              disabled={loading}
+              className="w-full mt-1.5 text-xs py-2 h-auto bg-white/10 hover:bg-[#00E5FF]/20 hover:text-[#00E5FF] border border-white/15 rounded-xl font-semibold transition-all"
+              data-testid="admin-quick-login-btn"
+            >
+              <ShieldCheck size={14} className="mr-1.5 text-[#00E5FF]" /> Quick Admin Sign In (Password: admin)
+            </Button>
           </div>
         </CardContent>
       </Card>
