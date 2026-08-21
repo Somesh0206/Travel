@@ -26,7 +26,22 @@ db = client[os.environ.get('DB_NAME', 'mova_db')]
 JWT_SECRET = os.environ.get('JWT_SECRET', 'mova_secret_jwt_key_2026')
 JWT_ALGO = "HS256"
 
-app = FastAPI(title="MOVA API")
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        await db.users.create_index("email", unique=True)
+        await db.users.create_index("id", unique=True)
+    except Exception as e:
+        logger.warning("DB index creation skipped: %s", e)
+    yield
+    try:
+        client.close()
+    except Exception:
+        pass
+
+app = FastAPI(title="MOVA API", lifespan=lifespan)
 api = APIRouter(prefix="/api")
 
 # ---------- In-Memory Fallback Storage (when MongoDB is unreachable) ----------
@@ -425,19 +440,3 @@ app.add_middleware(
 )
 app.include_router(api)
 
-
-@app.on_event("startup")
-async def on_startup():
-    try:
-        await db.users.create_index("email", unique=True)
-        await db.users.create_index("id", unique=True)
-    except Exception as e:
-        logger.warning("DB index creation skipped: %s", e)
-
-
-@app.on_event("shutdown")
-async def on_shutdown():
-    try:
-        client.close()
-    except Exception:
-        pass
