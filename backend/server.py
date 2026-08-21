@@ -8,6 +8,7 @@ import logging
 import uuid
 import bcrypt
 import jwt
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 
@@ -25,8 +26,6 @@ db = client[os.environ.get('DB_NAME', 'mova_db')]
 
 JWT_SECRET = os.environ.get('JWT_SECRET', 'mova_secret_jwt_key_2026')
 JWT_ALGO = "HS256"
-
-from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
