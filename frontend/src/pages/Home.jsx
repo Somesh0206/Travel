@@ -17,10 +17,10 @@ import { toast } from "sonner";
 import {
   Accessibility, Navigation, MapPin, Clock, Bus, ShieldPlus,
   WifiOff, IndianRupee, Route, ExternalLink, Car, Footprints,
-  Building2, Plane, Train, Compass, Globe, MousePointerClick, Search
+  Building2, Plane, Train, Globe, MousePointerClick, CornerUpRight
 } from "lucide-react";
 
-// Haversine distance in km
+// Haversine fallback distance in km
 function distKm(a, b) {
   if (!a || !b) return 0;
   const R = 6371;
@@ -64,9 +64,11 @@ export default function Home() {
   const [safetyOpen, setSafetyOpen] = useState(false);
   const [bugOpen, setBugOpen] = useState(false);
   
+  // Road-following navigation polyline data from OSRM
+  const [roadData, setRoadData] = useState(null);
+  
   // Interactive Map Click Selection Mode ("origin" | "destination" | null)
   const [mapClickTarget, setMapClickTarget] = useState(null);
-  const [searchResults, setSearchResults] = useState([]);
 
   useEffect(() => {
     api.get("/transit/stops").then((r) => setStops(r.data)).catch(() => {});
@@ -94,13 +96,22 @@ export default function Home() {
     return () => navigator.geolocation.clearWatch(id);
   }, []);
 
-  // Search geocode API when user types in search box
+  // Fetch road-following navigation route from OSRM engine whenever d1 or d2 changes
+  useEffect(() => {
+    if (d1 && d2) {
+      api.get(`/transit/road-route?start_lat=${d1.lat}&start_lng=${d1.lng}&end_lat=${d2.lat}&end_lng=${d2.lng}&mode=${travelMode}`)
+        .then((r) => setRoadData(r.data))
+        .catch(() => setRoadData(null));
+    } else {
+      setRoadData(null);
+    }
+  }, [d1, d2, travelMode]);
+
   const searchGlobalLocation = async (query, setTarget) => {
     if (!query?.trim()) return;
     try {
       const res = await api.get(`/transit/geocode?q=${encodeURIComponent(query)}`);
       if (res.data && res.data.results && res.data.results.length > 0) {
-        setSearchResults(res.data.results);
         const top = res.data.results[0];
         const item = { name: top.name, lat: top.lat, lng: top.lng };
         if (setTarget === "d1") {
@@ -110,10 +121,10 @@ export default function Home() {
           setD2(item);
           setD2Query(top.short || top.name);
         }
-        toast.success(`Found location: ${top.name.split(",")[0]}`);
+        toast.success(`Found: ${top.name.split(",")[0]}`);
       }
     } catch {
-      toast.error("Geocoding lookup failed. Using local text search.");
+      toast.error("Geocoding lookup failed.");
     }
   };
 
@@ -149,10 +160,9 @@ export default function Home() {
     const loc2 = d2 || findLocation(d2Query);
     setD1(loc1);
     setD2(loc2);
-    toast.success(`Route calculated: ${loc1.name.split(",")[0]} → ${loc2.name.split(",")[0]}`);
+    toast.success(`Road navigation calculated: ${loc1.name.split(",")[0]} → ${loc2.name.split(",")[0]}`);
   };
 
-  // Direct map click handler
   const handleMapClick = (lat, lng) => {
     const label = `Pin (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
     const clickedLoc = { name: label, lat, lng };
@@ -168,7 +178,6 @@ export default function Home() {
       setMapClickTarget(null);
       toast.success(`Destination set: ${label}`);
     } else {
-      // Default toggle if no mode selected
       if (!d1) {
         setD1(clickedLoc);
         setD1Query(label);
@@ -181,7 +190,6 @@ export default function Home() {
     }
   };
 
-  // Direct Google Maps & Apple Maps Navigation Deep Links
   const navUrls = useMemo(() => {
     const originStr = d1Query.trim() || (d1 ? d1.name : "KIIT Campus, Bhubaneswar");
     const destStr = d2Query.trim() || (d2 ? d2.name : "Kolkata, West Bengal");
@@ -220,19 +228,18 @@ export default function Home() {
 
   const journey = useMemo(() => {
     if (!d1 || !d2) return null;
-    const km = distKm(d1, d2);
-    const fare = computeFare(km, { accessible: wheelchair, night: nightSafe, mode: travelMode });
-    const estMinutes = travelMode === "walking" 
-      ? Math.round(km * 12) 
-      : (travelMode === "driving" ? Math.round(km * 1.5 + 10) : Math.round(km * 2.2 + 15));
+    const km = roadData ? roadData.distance_km : distKm(d1, d2).toFixed(1);
+    const estMinutes = roadData ? roadData.duration_min : (travelMode === "walking" ? Math.round(km * 12) : Math.round(km * 2.2 + 10));
+    const fare = computeFare(parseFloat(km), { accessible: wheelchair, night: nightSafe, mode: travelMode });
     
     return {
-      km: km.toFixed(1),
+      km,
       fare,
       estMinutes,
-      isNational: km > 50
+      isRoad: roadData?.found || false,
+      steps: roadData?.steps || []
     };
-  }, [d1, d2, wheelchair, nightSafe, travelMode]);
+  }, [d1, d2, roadData, wheelchair, nightSafe, travelMode]);
 
   const activeChips = useMemo(() => {
     if (chipTab === "hubs") return hubs;
@@ -245,11 +252,11 @@ export default function Home() {
       <Header onBug={() => setBugOpen(true)} />
 
       <main className="max-w-7xl mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-6">
-        {/* Left: Interactive Global & National Map */}
+        {/* Left: Interactive Road Navigation Map */}
         <section className="space-y-4">
           <div className="flex items-center justify-between bg-white/5 p-2 rounded-2xl border border-white/10 text-xs">
             <div className="flex items-center gap-2 font-medium">
-              <Globe size={16} className="text-[#00E5FF]" /> Global & Pan-India Map Selector
+              <Route size={16} className="text-[#00E5FF]" /> Turn-by-Turn Road Navigation Map
             </div>
             <div className="flex gap-2">
               <button
@@ -281,6 +288,7 @@ export default function Home() {
             theme={theme}
             stops={stops}
             routeStops={routeStops}
+            roadCoords={roadData?.coordinates || []}
             d1={d1}
             d2={d2}
             userLoc={userLoc}
@@ -298,14 +306,14 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Right: National & Local Journey Planner */}
+        {/* Right: Road Journey Planner & Turn-by-Turn Navigation */}
         <aside className="space-y-4">
           <Card className="mova-glass" data-testid="plan-card">
             <CardContent className="p-5 space-y-4">
               <div>
-                <div className="text-xs uppercase tracking-[0.25em] opacity-60">Global & Pan-India Route Selector</div>
+                <div className="text-xs uppercase tracking-[0.25em] opacity-60">Street Road Navigation Engine</div>
                 <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: "Outfit" }}>
-                  Plan any route, {user?.name?.split(" ")[0]}
+                  Road Routes, {user?.name?.split(" ")[0]}
                 </h2>
               </div>
 
@@ -318,7 +326,7 @@ export default function Home() {
                     travelMode === "transit" ? "bg-[#00E5FF] text-black shadow-md" : "hover:text-[#00E5FF] opacity-70"
                   }`}
                 >
-                  <Bus size={14} /> Transit / Rail
+                  <Bus size={14} /> Bus / Transit
                 </button>
                 <button
                   type="button"
@@ -327,7 +335,7 @@ export default function Home() {
                     travelMode === "driving" ? "bg-[#00E5FF] text-black shadow-md" : "hover:text-[#00E5FF] opacity-70"
                   }`}
                 >
-                  <Car size={14} /> Drive / Flight
+                  <Car size={14} /> Drive / Cab
                 </button>
                 <button
                   type="button"
@@ -340,7 +348,7 @@ export default function Home() {
                 </button>
               </div>
 
-              {/* Input Fields & Global Autocomplete */}
+              {/* Input Fields & Global Search */}
               <div className="space-y-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="d1">From (Origin)</Label>
@@ -371,7 +379,7 @@ export default function Home() {
                         if (e.target.value.length > 2) searchGlobalLocation(e.target.value, "d2");
                       }}
                       list="all-locations-list"
-                      placeholder="e.g. Mumbai CSMT, Puri, or Howrah Station"
+                      placeholder="e.g. Campus 15 (KIMS) or Howrah Station"
                       data-testid="d2-input"
                     />
                     <VoiceInput onResult={(t) => { setD2Query(t); searchGlobalLocation(t, "d2"); }} testId="d2-voice" />
@@ -416,7 +424,7 @@ export default function Home() {
                     </button>
                   </div>
 
-                  <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-1" data-testid="quick-chips">
+                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1" data-testid="quick-chips">
                     {activeChips.map((loc, idx) => (
                       <button
                         key={idx}
@@ -460,16 +468,16 @@ export default function Home() {
                   className="pill-btn bg-[#00E5FF] text-black hover:bg-[#00B8CC] flex-1 font-semibold"
                   data-testid="plan-route-btn"
                 >
-                  <Navigation size={16} className="mr-1.5" /> Plan National Route
+                  <Navigation size={16} className="mr-1.5" /> Calculate Road Route
                 </Button>
                 <Button variant="outline" className="pill-btn" onClick={() => setSafetyOpen(true)} data-testid="open-safety-btn">
                   Safety Check-in
                 </Button>
               </div>
 
-              {/* Google Maps / Apple Maps Direct Navigation Links */}
+              {/* Google Maps / Apple Maps Direct Links */}
               <div className="pt-2 border-t border-white/10 space-y-2">
-                <div className="text-xs uppercase tracking-[0.2em] opacity-60">External Navigation Tools</div>
+                <div className="text-xs uppercase tracking-[0.2em] opacity-60">External Navigation Links</div>
                 <div className="grid grid-cols-2 gap-2">
                   <a
                     href={navUrls.google}
@@ -492,11 +500,18 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Journey Details & Estimate */}
+              {/* Journey Details & Road Navigation Summary */}
               {journey && (
-                <div className="rounded-2xl border border-[#00E5FF]/25 bg-[#00E5FF]/5 p-4 mt-2" data-testid="fare-card">
-                  <div className="text-xs uppercase tracking-[0.25em] opacity-70 mb-1">
-                    {journey.isNational ? "Intercity / National Journey Summary" : "Local Journey Summary"}
+                <div className="rounded-2xl border border-[#00E5FF]/25 bg-[#00E5FF]/5 p-4 mt-2 space-y-3" data-testid="fare-card">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs uppercase tracking-[0.25em] opacity-70">
+                      {journey.isRoad ? "🛤️ OpenStreetMap Road Navigation" : "Direct Route Summary"}
+                    </div>
+                    {journey.isRoad && (
+                      <Badge className="bg-[#00E5FF] text-black font-bold text-[10px]">
+                        Road Match
+                      </Badge>
+                    )}
                   </div>
                   <div className="flex items-end gap-4 flex-wrap">
                     <div className="flex items-baseline">
@@ -516,12 +531,29 @@ export default function Home() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Turn-by-Turn Navigation Steps Card */}
+                  {journey.steps && journey.steps.length > 0 && (
+                    <div className="pt-2 border-t border-white/10 space-y-1.5">
+                      <div className="text-[11px] font-semibold text-[#00E5FF] flex items-center gap-1">
+                        <CornerUpRight size={13} /> Turn-by-Turn Road Directions:
+                      </div>
+                      <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
+                        {journey.steps.map((st, idx) => (
+                          <div key={idx} className="text-[11px] opacity-80 flex items-center justify-between bg-white/5 px-2 py-1 rounded-lg">
+                            <span>{st.instruction}</span>
+                            {st.distance_m > 0 && <span className="opacity-60 text-[10px] ml-2">{st.distance_m}m</span>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>
           </Card>
 
-          {/* Suggested Transit Routes */}
+          {/* Active Transit Routes */}
           <Card className="mova-glass" data-testid="suggested-routes">
             <CardContent className="p-5">
               <div className="flex items-center justify-between mb-3">

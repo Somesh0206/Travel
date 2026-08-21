@@ -553,6 +553,65 @@ async def get_routes():
     return DEMO_ROUTES
 
 
+@api.get("/transit/road-route")
+async def get_road_route(start_lat: float, start_lng: float, end_lat: float, end_lng: float, mode: str = "driving"):
+    """Fetch exact road-following navigation polyline and turn-by-turn steps using OSRM OpenStreetMap engine."""
+    import requests
+    import math
+
+    osrm_profile = "foot" if mode == "walking" else ("bike" if mode == "bicycling" else "driving")
+    url = f"https://router.project-osrm.org/route/v1/{osrm_profile}/{start_lng},{start_lat};{end_lng},{end_lat}?overview=full&geometries=geojson&steps=true"
+
+    try:
+        headers = {"User-Agent": "MOVA-Travel-App/1.0"}
+        resp = requests.get(url, headers=headers, timeout=4.0)
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get("code") == "Ok" and len(data.get("routes", [])) > 0:
+                route = data["routes"][0]
+                raw_coords = route["geometry"]["coordinates"]
+                leaflet_coords = [[pt[1], pt[0]] for pt in raw_coords]
+
+                steps = []
+                for leg in route.get("legs", []):
+                    for st in leg.get("steps", []):
+                        inst = st.get("maneuver", {}).get("type", "continue")
+                        name = st.get("name") or "road"
+                        dist_m = round(st.get("distance", 0))
+                        steps.append({
+                            "instruction": f"{inst.replace('_', ' ').capitalize()} on {name}",
+                            "distance_m": dist_m,
+                            "name": name
+                        })
+
+                return {
+                    "found": True,
+                    "coordinates": leaflet_coords,
+                    "distance_km": round(route.get("distance", 0) / 1000, 2),
+                    "duration_min": round(route.get("duration", 0) / 60, 1),
+                    "steps": steps[:8],
+                    "source": "osrm"
+                }
+    except Exception as e:
+        logger.warning("OSRM routing service timeout or fallback: %s", e)
+
+    # Calculate Haversine fallback distance
+    dlat = math.radians(end_lat - start_lat)
+    dlng = math.radians(end_lng - start_lng)
+    a = math.sin(dlat / 2)**2 + math.cos(math.radians(start_lat)) * math.cos(math.radians(end_lat)) * math.sin(dlng / 2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    fb_dist = round(6371.0 * c, 2)
+
+    return {
+        "found": False,
+        "coordinates": [[start_lat, start_lng], [end_lat, end_lng]],
+        "distance_km": fb_dist,
+        "duration_min": round(fb_dist * 2.5, 1),
+        "steps": [{"instruction": "Direct path route", "distance_m": 0, "name": "Direct Path"}],
+        "source": "fallback"
+    }
+
+
 @api.get("/safety/police")
 async def get_police():
     return POLICE_STATIONS

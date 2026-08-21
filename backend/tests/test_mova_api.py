@@ -190,6 +190,14 @@ def test_transit_geocode():
     assert any("Kolkata" in n for n in names)
 
 
+def test_transit_road_route():
+    r = requests.get(f"{API}/transit/road-route?start_lat=20.3558&start_lng=85.8175&end_lat=20.3492&end_lng=85.8213&mode=driving")
+    assert r.status_code == 200
+    data = r.json()
+    assert "coordinates" in data and len(data["coordinates"]) >= 2
+    assert "distance_km" in data
+
+
 def test_police():
     r = requests.get(f"{API}/safety/police")
     assert r.status_code == 200 and len(r.json()) >= 1

@@ -22,7 +22,7 @@ function makeDivIcon(color, glyph = "") {
   });
 }
 
-function MapController({ d1, d2, userLoc }) {
+function MapController({ d1, d2, userLoc, roadCoords }) {
   const map = useMap();
 
   useEffect(() => {
@@ -33,7 +33,10 @@ function MapController({ d1, d2, userLoc }) {
   }, [map]);
 
   useEffect(() => {
-    if (d1 && d2) {
+    if (roadCoords && roadCoords.length >= 2) {
+      const bounds = L.latLngBounds(roadCoords);
+      map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
+    } else if (d1 && d2) {
       const bounds = L.latLngBounds([[d1.lat, d1.lng], [d2.lat, d2.lng]]);
       map.fitBounds(bounds, { padding: [70, 70], maxZoom: 16 });
     } else if (d1) {
@@ -43,7 +46,7 @@ function MapController({ d1, d2, userLoc }) {
     } else if (userLoc) {
       map.flyTo([userLoc.lat, userLoc.lng], 14, { duration: 0.8 });
     }
-  }, [d1, d2, userLoc, map]);
+  }, [d1, d2, userLoc, roadCoords, map]);
 
   return null;
 }
@@ -63,6 +66,7 @@ export default function MapView({
   theme = "dark",
   stops = [],
   routeStops = [],
+  roadCoords = [],
   d1 = null,
   d2 = null,
   userLoc = null,
@@ -164,9 +168,15 @@ export default function MapView({
           </CircleMarker>
         ))}
 
-        {routeStops.length >= 2 && (
+        {/* Render Road Polyline following actual street navigation */}
+        {roadCoords && roadCoords.length >= 2 ? (
+          <>
+            <Polyline positions={roadCoords} pathOptions={{ color: "#00E5FF", weight: 6, opacity: 0.9, lineCap: "round", lineJoin: "round" }} />
+            <Polyline positions={roadCoords} pathOptions={{ color: "#ffffff", weight: 2, opacity: 0.6, dashArray: "6, 8" }} />
+          </>
+        ) : routeStops.length >= 2 ? (
           <Polyline positions={routeLine} pathOptions={{ color: "#00E5FF", weight: 5, opacity: 0.95, className: "route-line" }} />
-        )}
+        ) : null}
 
         {d1 && (
           <Marker position={[d1.lat, d1.lng]} icon={makeDivIcon("#00E5FF", "A")}>
@@ -198,7 +208,7 @@ export default function MapView({
           </Marker>
         ))}
 
-        <MapController d1={d1} d2={d2} userLoc={userLoc} />
+        <MapController d1={d1} d2={d2} userLoc={userLoc} roadCoords={roadCoords} />
       </MapContainer>
     </div>
   );
