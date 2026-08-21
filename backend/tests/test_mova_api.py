@@ -181,6 +181,15 @@ def test_transit_nav_links():
     assert "maps.apple.com" in data["apple_maps_url"]
 
 
+def test_transit_geocode():
+    r = requests.get(f"{API}/transit/geocode?q=Kolkata")
+    assert r.status_code == 200
+    res = r.json()
+    assert "results" in res and len(res["results"]) >= 1
+    names = [x["name"] for x in res["results"]]
+    assert any("Kolkata" in n for n in names)
+
+
 def test_police():
     r = requests.get(f"{API}/safety/police")
     assert r.status_code == 200 and len(r.json()) >= 1

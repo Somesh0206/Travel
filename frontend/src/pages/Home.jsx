@@ -17,7 +17,7 @@ import { toast } from "sonner";
 import {
   Accessibility, Navigation, MapPin, Clock, Bus, ShieldPlus,
   WifiOff, IndianRupee, Route, ExternalLink, Car, Footprints,
-  Building2, Plane, Train, Compass
+  Building2, Plane, Train, Compass, Globe, MousePointerClick, Search
 } from "lucide-react";
 
 // Haversine distance in km
@@ -56,13 +56,17 @@ export default function Home() {
   const [d2, setD2] = useState(null);
   
   const [travelMode, setTravelMode] = useState("transit"); // transit | driving | walking
-  const [chipTab, setChipTab] = useState("campuses"); // campuses | hubs | stops
+  const [chipTab, setChipTab] = useState("hubs"); // hubs | campuses | stops
   const [wheelchair, setWheelchair] = useState(true);
   const [nightSafe, setNightSafe] = useState(false);
   
   const [userLoc, setUserLoc] = useState(null);
   const [safetyOpen, setSafetyOpen] = useState(false);
   const [bugOpen, setBugOpen] = useState(false);
+  
+  // Interactive Map Click Selection Mode ("origin" | "destination" | null)
+  const [mapClickTarget, setMapClickTarget] = useState(null);
+  const [searchResults, setSearchResults] = useState([]);
 
   useEffect(() => {
     api.get("/transit/stops").then((r) => setStops(r.data)).catch(() => {});
@@ -73,7 +77,6 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    // Ask user for safety contact once (skip admin)
     if (user && user.role !== "admin" && !user.alt_phone) setSafetyOpen(true);
   }, [user]);
 
@@ -85,16 +88,37 @@ export default function Home() {
         setUserLoc(loc);
         api.post("/location/update", loc).catch(() => {});
       },
-      () => { /* denied - fall back to KIIT center */ },
+      () => {},
       { enableHighAccuracy: true, maximumAge: 15000, timeout: 10000 }
     );
     return () => navigator.geolocation.clearWatch(id);
   }, []);
 
-  // Combined searchable locations (Stops, KIIT Campuses, Pan-India Hubs)
+  // Search geocode API when user types in search box
+  const searchGlobalLocation = async (query, setTarget) => {
+    if (!query?.trim()) return;
+    try {
+      const res = await api.get(`/transit/geocode?q=${encodeURIComponent(query)}`);
+      if (res.data && res.data.results && res.data.results.length > 0) {
+        setSearchResults(res.data.results);
+        const top = res.data.results[0];
+        const item = { name: top.name, lat: top.lat, lng: top.lng };
+        if (setTarget === "d1") {
+          setD1(item);
+          setD1Query(top.short || top.name);
+        } else if (setTarget === "d2") {
+          setD2(item);
+          setD2Query(top.short || top.name);
+        }
+        toast.success(`Found location: ${top.name.split(",")[0]}`);
+      }
+    } catch {
+      toast.error("Geocoding lookup failed. Using local text search.");
+    }
+  };
+
   const allLocations = useMemo(() => {
-    const list = [...campuses, ...hubs, ...stops];
-    // Remove duplicate entries by name
+    const list = [...hubs, ...campuses, ...stops];
     const unique = [];
     const seen = new Set();
     for (const item of list) {
@@ -104,7 +128,7 @@ export default function Home() {
       }
     }
     return unique;
-  }, [campuses, hubs, stops]);
+  }, [hubs, campuses, stops]);
 
   const findLocation = (q) => {
     if (!q?.trim()) return null;
@@ -113,31 +137,58 @@ export default function Home() {
       x.name.toLowerCase().includes(lower) || 
       (x.short && x.short.toLowerCase().includes(lower)) ||
       (x.city && x.city.toLowerCase().includes(lower))
-    ) || { name: q, lat: 20.3558, lng: 85.8175 }; // fallback lat/lng if custom string
+    ) || { name: q, lat: 20.3558, lng: 85.8175 };
   };
 
   const plan = () => {
     if (!d1Query.trim() || !d2Query.trim()) {
-      toast.error("Please enter both Start and End locations.");
+      toast.error("Please specify both Start and Destination locations.");
       return;
     }
-    const loc1 = findLocation(d1Query);
-    const loc2 = findLocation(d2Query);
+    const loc1 = d1 || findLocation(d1Query);
+    const loc2 = d2 || findLocation(d2Query);
     setD1(loc1);
     setD2(loc2);
-    toast.success(`Route planned: ${loc1.name} → ${loc2.name}`);
+    toast.success(`Route calculated: ${loc1.name.split(",")[0]} → ${loc2.name.split(",")[0]}`);
   };
 
-  // Direct Google Maps & Apple Maps Navigation Links
+  // Direct map click handler
+  const handleMapClick = (lat, lng) => {
+    const label = `Pin (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+    const clickedLoc = { name: label, lat, lng };
+
+    if (mapClickTarget === "origin") {
+      setD1(clickedLoc);
+      setD1Query(label);
+      setMapClickTarget(null);
+      toast.success(`Start point set: ${label}`);
+    } else if (mapClickTarget === "destination") {
+      setD2(clickedLoc);
+      setD2Query(label);
+      setMapClickTarget(null);
+      toast.success(`Destination set: ${label}`);
+    } else {
+      // Default toggle if no mode selected
+      if (!d1) {
+        setD1(clickedLoc);
+        setD1Query(label);
+        toast.info(`Start point A set on map`);
+      } else {
+        setD2(clickedLoc);
+        setD2Query(label);
+        toast.info(`Destination B set on map`);
+      }
+    }
+  };
+
+  // Direct Google Maps & Apple Maps Navigation Deep Links
   const navUrls = useMemo(() => {
-    const originStr = d1Query.trim() || (d1 ? d1.name : "KIIT Square, Bhubaneswar");
-    const destStr = d2Query.trim() || (d2 ? d2.name : "Patia, Bhubaneswar");
+    const originStr = d1Query.trim() || (d1 ? d1.name : "KIIT Campus, Bhubaneswar");
+    const destStr = d2Query.trim() || (d2 ? d2.name : "Kolkata, West Bengal");
     const orig = encodeURIComponent(originStr);
     const dest = encodeURIComponent(destStr);
     
-    // Google Maps mode mapping
     const gMode = travelMode === "walking" ? "walking" : (travelMode === "driving" ? "driving" : "transit");
-    // Apple Maps dirflg mapping (r=transit, d=driving, w=walking)
     const aMode = travelMode === "walking" ? "w" : (travelMode === "driving" ? "d" : "r");
 
     return {
@@ -148,7 +199,6 @@ export default function Home() {
 
   const routeStops = useMemo(() => {
     if (!d1 || !d2) return [];
-    // Try to find a route containing both stops if available
     const eligible = routes.filter((r) => (wheelchair ? r.accessible : true));
     for (const r of eligible) {
       const iA = r.stops.indexOf(d1.id);
@@ -158,7 +208,6 @@ export default function Home() {
         return r.stops.slice(lo, hi + 1).map((sid) => stops.find((s) => s.id === sid)).filter(Boolean);
       }
     }
-    // Fallback straight line polyline
     return [d1, d2];
   }, [d1, d2, routes, stops, wheelchair]);
 
@@ -169,36 +218,65 @@ export default function Home() {
     return list;
   }, [routes, wheelchair, nightSafe]);
 
-  // Fare + total km along planned route
   const journey = useMemo(() => {
     if (!d1 || !d2) return null;
     const km = distKm(d1, d2);
     const fare = computeFare(km, { accessible: wheelchair, night: nightSafe, mode: travelMode });
     const estMinutes = travelMode === "walking" 
       ? Math.round(km * 12) 
-      : (travelMode === "driving" ? Math.round(km * 2.2 + 5) : Math.round(km * 3 + 8));
+      : (travelMode === "driving" ? Math.round(km * 1.5 + 10) : Math.round(km * 2.2 + 15));
     
     return {
-      km: km.toFixed(2),
+      km: km.toFixed(1),
       fare,
       estMinutes,
-      stops: routeStops.length > 2 ? routeStops.length : "Direct"
+      isNational: km > 50
     };
-  }, [d1, d2, routeStops, wheelchair, nightSafe, travelMode]);
+  }, [d1, d2, wheelchair, nightSafe, travelMode]);
 
   const activeChips = useMemo(() => {
-    if (chipTab === "campuses") return campuses;
     if (chipTab === "hubs") return hubs;
+    if (chipTab === "campuses") return campuses;
     return stops;
-  }, [chipTab, campuses, hubs, stops]);
+  }, [chipTab, hubs, campuses, stops]);
 
   return (
     <div className="min-h-screen mova-hero-grid">
       <Header onBug={() => setBugOpen(true)} />
 
       <main className="max-w-7xl mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-6">
-        {/* Left: Interactive Map */}
+        {/* Left: Interactive Global & National Map */}
         <section className="space-y-4">
+          <div className="flex items-center justify-between bg-white/5 p-2 rounded-2xl border border-white/10 text-xs">
+            <div className="flex items-center gap-2 font-medium">
+              <Globe size={16} className="text-[#00E5FF]" /> Global & Pan-India Map Selector
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setMapClickTarget(mapClickTarget === "origin" ? null : "origin")}
+                className={`px-3 py-1 rounded-xl font-semibold flex items-center gap-1 transition-all ${
+                  mapClickTarget === "origin"
+                    ? "bg-[#00E5FF] text-black shadow-md"
+                    : "bg-white/10 hover:bg-white/20 text-white"
+                }`}
+              >
+                <MousePointerClick size={13} /> Set Start (A)
+              </button>
+              <button
+                type="button"
+                onClick={() => setMapClickTarget(mapClickTarget === "destination" ? null : "destination")}
+                className={`px-3 py-1 rounded-xl font-semibold flex items-center gap-1 transition-all ${
+                  mapClickTarget === "destination"
+                    ? "bg-[#B24CFF] text-white shadow-md"
+                    : "bg-white/10 hover:bg-white/20 text-white"
+                }`}
+              >
+                <MousePointerClick size={13} /> Set Dest (B)
+              </button>
+            </div>
+          </div>
+
           <MapView
             theme={theme}
             stops={stops}
@@ -208,28 +286,30 @@ export default function Home() {
             userLoc={userLoc}
             police={police}
             height="64vh"
+            onMapClick={handleMapClick}
+            clickMode={mapClickTarget}
           />
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 stagger-in">
+            <StatCard icon={<Globe size={18} />} label="National Hubs" value={hubs.length || 22} testId="stat-hubs" />
             <StatCard icon={<Building2 size={18} />} label="KIIT Campuses" value={campuses.length || 10} testId="stat-campuses" />
-            <StatCard icon={<Compass size={18} />} label="Pan-India Hubs" value={hubs.length || 10} testId="stat-hubs" />
             <StatCard icon={<Accessibility size={18} />} label="Accessible" value={routes.filter(r => r.accessible).length} testId="stat-access" />
             <StatCard icon={<ShieldPlus size={18} />} label="Police nearby" value={police.length} testId="stat-police" />
           </div>
         </section>
 
-        {/* Right: Journey Planner & Navigation Options */}
+        {/* Right: National & Local Journey Planner */}
         <aside className="space-y-4">
           <Card className="mova-glass" data-testid="plan-card">
             <CardContent className="p-5 space-y-4">
               <div>
-                <div className="text-xs uppercase tracking-[0.25em] opacity-60">Pan-India & KIIT Campus Navigator</div>
+                <div className="text-xs uppercase tracking-[0.25em] opacity-60">Global & Pan-India Route Selector</div>
                 <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: "Outfit" }}>
-                  Where to, {user?.name?.split(" ")[0]}?
+                  Plan any route, {user?.name?.split(" ")[0]}
                 </h2>
               </div>
 
-              {/* Mode Selector (Transit / Driving / Walking) */}
+              {/* Mode Selector */}
               <div className="flex bg-white/5 p-1 rounded-xl border border-white/10 gap-1" data-testid="mode-selector">
                 <button
                   type="button"
@@ -238,7 +318,7 @@ export default function Home() {
                     travelMode === "transit" ? "bg-[#00E5FF] text-black shadow-md" : "hover:text-[#00E5FF] opacity-70"
                   }`}
                 >
-                  <Bus size={14} /> Public Transit
+                  <Bus size={14} /> Transit / Rail
                 </button>
                 <button
                   type="button"
@@ -247,7 +327,7 @@ export default function Home() {
                     travelMode === "driving" ? "bg-[#00E5FF] text-black shadow-md" : "hover:text-[#00E5FF] opacity-70"
                   }`}
                 >
-                  <Car size={14} /> Drive / Cab
+                  <Car size={14} /> Drive / Flight
                 </button>
                 <button
                   type="button"
@@ -260,7 +340,7 @@ export default function Home() {
                 </button>
               </div>
 
-              {/* Input Fields */}
+              {/* Input Fields & Global Autocomplete */}
               <div className="space-y-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="d1">From (Origin)</Label>
@@ -268,12 +348,15 @@ export default function Home() {
                     <Input
                       id="d1"
                       value={d1Query}
-                      onChange={(e) => setD1Query(e.target.value)}
+                      onChange={(e) => {
+                        setD1Query(e.target.value);
+                        if (e.target.value.length > 2) searchGlobalLocation(e.target.value, "d1");
+                      }}
                       list="all-locations-list"
-                      placeholder="e.g. KIIT Campus 3 or Biju Patnaik Airport"
+                      placeholder="e.g. KIIT Campus 3, Kolkata, or Delhi Airport"
                       data-testid="d1-input"
                     />
-                    <VoiceInput onResult={(t) => setD1Query(t)} testId="d1-voice" />
+                    <VoiceInput onResult={(t) => { setD1Query(t); searchGlobalLocation(t, "d1"); }} testId="d1-voice" />
                   </div>
                 </div>
 
@@ -283,12 +366,15 @@ export default function Home() {
                     <Input
                       id="d2"
                       value={d2Query}
-                      onChange={(e) => setD2Query(e.target.value)}
+                      onChange={(e) => {
+                        setD2Query(e.target.value);
+                        if (e.target.value.length > 2) searchGlobalLocation(e.target.value, "d2");
+                      }}
                       list="all-locations-list"
-                      placeholder="e.g. Campus 15 (KIMS) or Howrah Stn"
+                      placeholder="e.g. Mumbai CSMT, Puri, or Howrah Station"
                       data-testid="d2-input"
                     />
-                    <VoiceInput onResult={(t) => setD2Query(t)} testId="d2-voice" />
+                    <VoiceInput onResult={(t) => { setD2Query(t); searchGlobalLocation(t, "d2"); }} testId="d2-voice" />
                   </div>
                 </div>
 
@@ -298,9 +384,18 @@ export default function Home() {
                   ))}
                 </datalist>
 
-                {/* Quick Chips Tabs (KIIT Campuses / Pan-India Hubs / Bus Stops) */}
+                {/* Quick Selection Tabs */}
                 <div className="space-y-2 pt-1">
                   <div className="flex items-center gap-2 border-b border-white/10 pb-1 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setChipTab("hubs")}
+                      className={`pb-1 font-medium transition-colors ${
+                        chipTab === "hubs" ? "text-[#00E5FF] border-b-2 border-[#00E5FF]" : "opacity-60 hover:opacity-100"
+                      }`}
+                    >
+                      🇮🇳 Pan-India Cities
+                    </button>
                     <button
                       type="button"
                       onClick={() => setChipTab("campuses")}
@@ -309,15 +404,6 @@ export default function Home() {
                       }`}
                     >
                       🎓 KIIT Campuses
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setChipTab("hubs")}
-                      className={`pb-1 font-medium transition-colors ${
-                        chipTab === "hubs" ? "text-[#00E5FF] border-b-2 border-[#00E5FF]" : "opacity-60 hover:opacity-100"
-                      }`}
-                    >
-                      ✈️ Pan-India Hubs
                     </button>
                     <button
                       type="button"
@@ -330,12 +416,21 @@ export default function Home() {
                     </button>
                   </div>
 
-                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1" data-testid="quick-chips">
+                  <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-1" data-testid="quick-chips">
                     {activeChips.map((loc, idx) => (
                       <button
                         key={idx}
                         type="button"
-                        onClick={() => (!d1Query ? setD1Query(loc.name) : setD2Query(loc.name))}
+                        onClick={() => {
+                          const item = { name: loc.name, lat: loc.lat, lng: loc.lng };
+                          if (!d1Query) {
+                            setD1Query(loc.short || loc.name);
+                            setD1(item);
+                          } else {
+                            setD2Query(loc.short || loc.name);
+                            setD2(item);
+                          }
+                        }}
                         className="text-[11px] px-2.5 py-1 rounded-full border border-white/10 hover:border-[#00E5FF]/50 hover:text-[#00E5FF] transition-colors flex items-center gap-1 bg-white/5"
                         data-testid={`chip-${idx}`}
                       >
@@ -365,7 +460,7 @@ export default function Home() {
                   className="pill-btn bg-[#00E5FF] text-black hover:bg-[#00B8CC] flex-1 font-semibold"
                   data-testid="plan-route-btn"
                 >
-                  <Navigation size={16} className="mr-1.5" /> Plan Route
+                  <Navigation size={16} className="mr-1.5" /> Plan National Route
                 </Button>
                 <Button variant="outline" className="pill-btn" onClick={() => setSafetyOpen(true)} data-testid="open-safety-btn">
                   Safety Check-in
@@ -374,7 +469,7 @@ export default function Home() {
 
               {/* Google Maps / Apple Maps Direct Navigation Links */}
               <div className="pt-2 border-t border-white/10 space-y-2">
-                <div className="text-xs uppercase tracking-[0.2em] opacity-60">External Maps Navigation</div>
+                <div className="text-xs uppercase tracking-[0.2em] opacity-60">External Navigation Tools</div>
                 <div className="grid grid-cols-2 gap-2">
                   <a
                     href={navUrls.google}
@@ -397,10 +492,12 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Journey Details & Fare Estimate */}
+              {/* Journey Details & Estimate */}
               {journey && (
                 <div className="rounded-2xl border border-[#00E5FF]/25 bg-[#00E5FF]/5 p-4 mt-2" data-testid="fare-card">
-                  <div className="text-xs uppercase tracking-[0.25em] opacity-70 mb-1">Route & Fare Summary</div>
+                  <div className="text-xs uppercase tracking-[0.25em] opacity-70 mb-1">
+                    {journey.isNational ? "Intercity / National Journey Summary" : "Local Journey Summary"}
+                  </div>
                   <div className="flex items-end gap-4 flex-wrap">
                     <div className="flex items-baseline">
                       <IndianRupee size={22} className="text-[#00E5FF]" />
@@ -412,15 +509,12 @@ export default function Home() {
                       <div className="flex items-center gap-1.5 font-medium text-[#00E5FF]">
                         <Clock size={14} /> ~{journey.estMinutes} mins ({journey.km} km)
                       </div>
-                      <div className="flex items-center gap-1.5 opacity-70 text-xs">
+                      <div className="flex items-center gap-1.5 opacity-70 text-xs truncate max-w-[240px]">
                         <span data-testid="fare-from">{d1Query || d1?.name}</span>
                         <span>→</span>
                         <span data-testid="fare-to">{d2Query || d2?.name}</span>
                       </div>
                     </div>
-                  </div>
-                  <div className="text-[11px] opacity-60 mt-2">
-                    {travelMode === "walking" ? "Free walking route" : `Base fare + ₹8/km${wheelchair ? " + ₹5 accessible" : ""}${nightSafe ? " + ₹10 night-safe" : ""}`}
                   </div>
                 </div>
               )}
@@ -472,7 +566,7 @@ export default function Home() {
                 })}
               </div>
               <div className="mt-4 text-xs opacity-60 inline-flex items-center gap-1.5">
-                <WifiOff size={12} /> Tip: Offline tab shows cached routes if signal drops.
+                <WifiOff size={12} /> Tip: Offline mode caches your active route and emergency contacts.
               </div>
             </CardContent>
           </Card>

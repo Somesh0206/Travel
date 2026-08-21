@@ -409,14 +409,26 @@ KIIT_CAMPUSES = [
 PAN_INDIA_HUBS = [
     {"id": "bbi_apt", "name": "Biju Patnaik International Airport (BBI, Bhubaneswar)", "short": "Bhubaneswar Airport (BBI)", "lat": 20.2444, "lng": 85.8178, "city": "Bhubaneswar", "category": "Airport"},
     {"id": "bbs_rly", "name": "Bhubaneswar Railway Station (BBS)", "short": "Bhubaneswar Railway Stn", "lat": 20.2701, "lng": 85.8412, "city": "Bhubaneswar", "category": "Railway Station"},
-    {"id": "isbt_brm", "name": "Baramunda ISBT Bus Terminal", "short": "Baramunda ISBT", "lat": 20.2874, "lng": 85.7891, "city": "Bhubaneswar", "category": "Bus Stand"},
-    {"id": "ccu_apt", "name": "Netaji Subhash Chandra Bose Intl Airport (Kolkata)", "short": "Kolkata Airport (CCU)", "lat": 22.6547, "lng": 88.4467, "city": "Kolkata", "category": "Airport"},
+    {"id": "isbt_brm", "name": "Baramunda ISBT Bus Terminal (Bhubaneswar)", "short": "Baramunda ISBT", "lat": 20.2874, "lng": 85.7891, "city": "Bhubaneswar", "category": "Bus Stand"},
+    {"id": "puri_jgn", "name": "Shree Jagannath Temple & Station (Puri)", "short": "Puri Jagannath Temple", "lat": 19.8047, "lng": 85.8179, "city": "Puri", "category": "Heritage & Transit"},
+    {"id": "ctc_rly", "name": "Cuttack Railway Station (CTC)", "short": "Cuttack Station", "lat": 20.4625, "lng": 85.8828, "city": "Cuttack", "category": "Railway Station"},
+    {"id": "ccu_apt", "name": "Netaji Subhash Chandra Bose Intl Airport (CCU, Kolkata)", "short": "Kolkata Airport (CCU)", "lat": 22.6547, "lng": 88.4467, "city": "Kolkata", "category": "Airport"},
     {"id": "hwh_rly", "name": "Howrah Junction Railway Station (Kolkata)", "short": "Howrah Stn (Kolkata)", "lat": 22.5839, "lng": 88.3426, "city": "Kolkata", "category": "Railway Station"},
     {"id": "del_apt", "name": "Indira Gandhi International Airport (DEL, New Delhi)", "short": "Delhi Airport (DEL)", "lat": 28.5562, "lng": 77.1000, "city": "New Delhi", "category": "Airport"},
     {"id": "ndls_rly", "name": "New Delhi Railway Station (NDLS)", "short": "New Delhi Stn", "lat": 28.6430, "lng": 77.2194, "city": "New Delhi", "category": "Railway Station"},
     {"id": "csmt_rly", "name": "Chhatrapati Shivaji Maharaj Terminus (CSMT, Mumbai)", "short": "CSMT Mumbai", "lat": 18.9400, "lng": 72.8353, "city": "Mumbai", "category": "Railway Station"},
+    {"id": "bom_apt", "name": "Chhatrapati Shivaji Maharaj Intl Airport (BOM, Mumbai)", "short": "Mumbai Airport (BOM)", "lat": 19.0896, "lng": 72.8656, "city": "Mumbai", "category": "Airport"},
     {"id": "sbc_rly", "name": "KSR Bengaluru City Railway Station (Bengaluru)", "short": "Bengaluru City Stn", "lat": 12.9781, "lng": 77.5697, "city": "Bengaluru", "category": "Railway Station"},
     {"id": "hyd_rly", "name": "Secunderabad / Hyderabad Junction", "short": "Hyderabad Stn", "lat": 17.4339, "lng": 78.5016, "city": "Hyderabad", "category": "Railway Station"},
+    {"id": "mas_rly", "name": "Puratchi Thalaivar Dr. M.G.R. Central Station (Chennai)", "short": "Chennai Central (MAS)", "lat": 13.0827, "lng": 80.2707, "city": "Chennai", "category": "Railway Station"},
+    {"id": "pune_rly", "name": "Pune Junction Railway Station (Pune)", "short": "Pune Stn", "lat": 18.5284, "lng": 73.8739, "city": "Pune", "category": "Railway Station"},
+    {"id": "adi_rly", "name": "Ahmedabad Junction Railway Station (Ahmedabad)", "short": "Ahmedabad Stn (ADI)", "lat": 23.0225, "lng": 72.6006, "city": "Ahmedabad", "category": "Railway Station"},
+    {"id": "jp_rly", "name": "Jaipur Junction Railway Station (Jaipur)", "short": "Jaipur Stn (JP)", "lat": 26.9200, "lng": 75.7873, "city": "Jaipur", "category": "Railway Station"},
+    {"id": "bsb_rly", "name": "Varanasi Junction / Kashi (Varanasi)", "short": "Varanasi Stn (BSB)", "lat": 25.3262, "lng": 82.9868, "city": "Varanasi", "category": "Railway Station"},
+    {"id": "goa_apt", "name": "Goa Dabolim International Airport (GOI, Goa)", "short": "Goa Airport (GOI)", "lat": 15.3808, "lng": 73.8314, "city": "Goa", "category": "Airport"},
+    {"id": "ghy_rly", "name": "Guwahati Railway Station (Guwahati)", "short": "Guwahati Stn (GHY)", "lat": 26.1806, "lng": 91.7539, "city": "Guwahati", "category": "Railway Station"},
+    {"id": "cdg_rly", "name": "Chandigarh Junction Railway Station (Chandigarh)", "short": "Chandigarh Stn", "lat": 30.7021, "lng": 76.8188, "city": "Chandigarh", "category": "Railway Station"},
+    {"id": "cok_apt", "name": "Cochin International Airport (COK, Kochi)", "short": "Kochi Airport (COK)", "lat": 10.1520, "lng": 76.4019, "city": "Kochi", "category": "Airport"},
 ]
 
 DEMO_STOPS = [
@@ -458,6 +470,55 @@ async def get_campuses():
 @api.get("/transit/hubs")
 async def get_hubs():
     return PAN_INDIA_HUBS
+
+
+@api.get("/transit/geocode")
+async def geocode_location(q: str):
+    """Search any city, hub, or landmark globally/nationally using OpenStreetMap Nominatim with predefined fallbacks."""
+    import requests
+    from urllib.parse import quote
+
+    if not q or not q.strip():
+        return {"error": "Query parameter q is required", "results": []}
+
+    query = q.strip()
+    results = []
+    lower_q = query.lower()
+
+    # 1. Match local predefined campuses and hubs first
+    for item in KIIT_CAMPUSES + PAN_INDIA_HUBS:
+        if lower_q in item["name"].lower() or lower_q in item.get("short", "").lower() or lower_q in item.get("city", "").lower():
+            results.append({
+                "name": item["name"],
+                "short": item.get("short", item["name"]),
+                "lat": item["lat"],
+                "lng": item["lng"],
+                "category": item.get("category", "Local"),
+                "source": "predefined"
+            })
+
+    # 2. Try querying OpenStreetMap Nominatim for national/global places
+    try:
+        url = f"https://nominatim.openstreetmap.org/search?format=json&q={quote(query)}&limit=5"
+        headers = {"User-Agent": "MOVA-Travel-App/1.0"}
+        resp = requests.get(url, headers=headers, timeout=2.5)
+        if resp.status_code == 200:
+            for r in resp.json():
+                # Avoid exact coordinate duplicates
+                r_lat, r_lng = float(r["lat"]), float(r["lon"])
+                if not any(abs(x["lat"] - r_lat) < 0.001 and abs(x["lng"] - r_lng) < 0.001 for x in results):
+                    results.append({
+                        "name": r.get("display_name", query),
+                        "short": r.get("name", query),
+                        "lat": r_lat,
+                        "lng": r_lng,
+                        "category": r.get("type", "Place").replace("_", " ").title(),
+                        "source": "nominatim"
+                    })
+    except Exception as e:
+        logger.warning("Geocoding service timeout or error: %s", e)
+
+    return {"query": query, "results": results}
 
 
 @api.post("/transit/nav-links")
