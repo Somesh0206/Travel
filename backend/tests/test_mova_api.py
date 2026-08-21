@@ -8,7 +8,7 @@ BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://safe-commute-18.prev
 API = f"{BASE_URL}/api"
 
 ADMIN_EMAIL = "admin@mova.app"
-ADMIN_PASSWORD = "mova@admin123"
+ADMIN_PASSWORD = "admin"
 
 
 def _client():
