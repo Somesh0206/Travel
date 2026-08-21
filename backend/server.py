@@ -836,6 +836,75 @@ async def get_road_route(start_lat: float, start_lng: float, end_lat: float, end
     }
 
 
+@api.get("/transit/route-road-geometry")
+async def get_route_road_geometry(route_id: str):
+    """Fetch complete road-following street polyline for an entire bus route across all its sequenced stops."""
+    import requests
+    target_route = next((r for r in DEMO_ROUTES if r["id"] == route_id), None)
+    if not target_route:
+        raise HTTPException(status_code=404, detail="Route not found")
+
+    # Resolve stop coordinates in sequence
+    stop_map = {s["id"]: s for s in DEMO_STOPS}
+    coords = []
+    stop_objs = []
+    for sid in target_route["stops"]:
+        st = stop_map.get(sid)
+        if st:
+            coords.append((st["lng"], st["lat"]))
+            stop_objs.append(st)
+
+    if len(coords) < 2:
+        return {
+            "route_id": route_id,
+            "found": False,
+            "coordinates": [[s["lat"], s["lng"]] for s in stop_objs],
+            "distance_km": 5.2,
+            "duration_min": 15,
+            "stops": stop_objs,
+            "source": "fallback"
+        }
+
+    # Format OSRM multi-waypoint coordinate string: lng1,lat1;lng2,lat2;lng3,lat3...
+    coord_str = ";".join([f"{lng},{lat}" for lng, lat in coords])
+    url = f"https://router.project-osrm.org/route/v1/driving/{coord_str}?overview=full&geometries=geojson&steps=true"
+
+    try:
+        headers = {"User-Agent": "MOVA-Travel-App/1.0"}
+        resp = requests.get(url, headers=headers, timeout=4.5)
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get("code") == "Ok" and len(data.get("routes", [])) > 0:
+                route_res = data["routes"][0]
+                raw_coords = route_res["geometry"]["coordinates"]
+                leaflet_coords = [[pt[1], pt[0]] for pt in raw_coords]
+
+                return {
+                    "route_id": route_id,
+                    "name": target_route["name"],
+                    "found": True,
+                    "coordinates": leaflet_coords,
+                    "distance_km": round(route_res.get("distance", 0) / 1000, 2),
+                    "duration_min": round(route_res.get("duration", 0) / 60, 1),
+                    "stops": stop_objs,
+                    "source": "osrm"
+                }
+    except Exception as e:
+        logger.warning("OSRM multi-stop routing error: %s", e)
+
+    # Fallback to straight lines between stop coordinates
+    return {
+        "route_id": route_id,
+        "name": target_route["name"],
+        "found": False,
+        "coordinates": [[s["lat"], s["lng"]] for s in stop_objs],
+        "distance_km": 5.4,
+        "duration_min": 14,
+        "stops": stop_objs,
+        "source": "fallback"
+    }
+
+
 @api.get("/safety/police")
 async def get_police():
     return POLICE_STATIONS

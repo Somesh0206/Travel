@@ -20,7 +20,7 @@ import {
   Accessibility, Navigation, MapPin, Clock, Bus, ShieldPlus,
   WifiOff, IndianRupee, Route, ExternalLink, Car, Footprints,
   Building2, Plane, Train, Globe, MousePointerClick, CornerUpRight, Search,
-  Volume2, ShieldCheck, AlertTriangle, Users, MessageSquare, Radio, Bell
+  Volume2, ShieldCheck, AlertTriangle, Users, MessageSquare, Radio, Bell, Compass
 } from "lucide-react";
 
 // Haversine fallback distance in km
@@ -66,8 +66,7 @@ export default function Home() {
   const [showD2Menu, setShowD2Menu] = useState(false);
   
   const [travelMode, setTravelMode] = useState("transit"); // transit | driving | walking
-  const [chipTab, setChipTab] = useState("hubs"); // hubs | campuses | stops | explorer
-  const [activeViewTab, setActiveViewTab] = useState("planner"); // planner | explorer | crowding
+  const [chipTab, setChipTab] = useState("hubs"); // hubs | campuses | stops
   
   // Accessibility filters (Module 2)
   const [wheelchair, setWheelchair] = useState(true);
@@ -95,6 +94,9 @@ export default function Home() {
 
   // Road-following navigation polyline data from OSRM
   const [roadData, setRoadData] = useState(null);
+
+  // Dedicated Bus Route Road Geometry Selection
+  const [activeBusRouteRoad, setActiveBusRouteRoad] = useState(null);
   
   // Interactive Map Click Selection Mode ("origin" | "destination" | null)
   const [mapClickTarget, setMapClickTarget] = useState(null);
@@ -175,10 +177,35 @@ export default function Home() {
     }
     api.get(`/transit/road-route?start_lat=${d1.lat}&start_lng=${d1.lng}&end_lat=${d2.lat}&end_lng=${d2.lng}&mode=${travelMode}`)
       .then((res) => {
-        if (res.data) setRoadData(res.data);
+        if (res.data) {
+          setRoadData(res.data);
+          setActiveBusRouteRoad(null); // Prioritize user-specific origin-destination road route
+        }
       })
       .catch(() => setRoadData(null));
   }, [d1, d2, travelMode]);
+
+  // Fetch complete multi-stop road route for a selected bus line
+  const handleShowBusRouteOnRoad = async (route) => {
+    try {
+      toast.info(`Fetching road street path for ${route.name}…`);
+      const res = await api.get(`/transit/route-road-geometry?route_id=${route.id}`);
+      if (res.data && res.data.coordinates) {
+        setActiveBusRouteRoad({
+          routeId: route.id,
+          name: route.name,
+          vehicleNo: route.vehicle_no,
+          coordinates: res.data.coordinates,
+          distance_km: res.data.distance_km,
+          duration_min: res.data.duration_min,
+        });
+        setRoadData(null);
+        toast.success(`🛣️ Showing ${route.name} on the road (${res.data.distance_km} km)!`);
+      }
+    } catch (e) {
+      toast.error("Could not fetch road route geometry");
+    }
+  };
 
   // Speech announcement helper for Audio Guidance (Module 2 & 5)
   const speakAnnouncement = (text) => {
@@ -297,10 +324,10 @@ export default function Home() {
                 <Accessibility size={13} /> 5. Accessible Public Transport Assistant
               </div>
               <h1 className="text-3xl sm:text-4xl font-bold tracking-tighter" style={{ fontFamily: "Outfit" }}>
-                Safe & Accessible Mobility
+                Safe & Accessible Mobility on Roads
               </h1>
               <p className="text-sm opacity-75 leading-relaxed">
-                Smart street routing, wheelchair boarding assistance, live crowding updates, and night-safe transit across all KIIT Campuses and pan-India transit corridors.
+                Live street-following road routes, animated transit movement, wheelchair ramp assistance, live crowding, and night-safe corridors across KIIT campuses and India.
               </p>
             </div>
 
@@ -385,7 +412,7 @@ export default function Home() {
         {/* Main Grid: Left Map & Route Explorer, Right Origin/Destination Controls */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Map Column */}
-          <div className="lg:col-span-7 space-y-6">
+          <div className="lg:col-span-7 space-y-4">
             {/* Interactive Map Mode Indicator */}
             {mapClickTarget && (
               <div className="p-3 rounded-2xl bg-[#00E5FF]/20 border border-[#00E5FF] text-[#00E5FF] text-xs font-bold flex items-center justify-between animate-pulse">
@@ -398,17 +425,43 @@ export default function Home() {
               </div>
             )}
 
+            {/* Quick One-Click Bus Line Road Route Switcher */}
+            <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-white/70 flex items-center gap-1 shrink-0">
+                <Route size={13} className="text-[#00E5FF]" /> Show Road Routes:
+              </span>
+              <div className="flex gap-1.5 shrink-0">
+                {routes.map((r) => (
+                  <button
+                    key={r.id}
+                    onClick={() => handleShowBusRouteOnRoad(r)}
+                    className={`text-xs px-2.5 py-1 rounded-xl border transition-all font-semibold flex items-center gap-1 ${
+                      activeBusRouteRoad?.routeId === r.id
+                        ? "bg-[#00E5FF] text-black border-[#00E5FF] font-bold shadow-md shadow-[#00E5FF]/40"
+                        : "bg-white/5 border-white/15 text-white/80 hover:text-white hover:border-[#00E5FF]/50"
+                    }`}
+                  >
+                    <Bus size={11} /> {r.name.split(" ")[0]} ({r.id.toUpperCase()})
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <Card className="mova-glass overflow-hidden border-white/10" data-testid="map-card">
               <CardContent className="p-3 sm:p-4">
                 <div className="flex items-center justify-between mb-2">
                   <div className="text-xs uppercase tracking-wider font-semibold opacity-70 flex items-center gap-1.5">
                     <Route size={14} className="text-[#00E5FF]" /> Live OSRM Road & Navigation Map
                   </div>
-                  {journey?.isRoad && (
+                  {activeBusRouteRoad ? (
                     <Badge className="bg-[#00E5FF] text-black font-bold text-[10px]">
-                      OSRM Street Track Active
+                      🛣️ Road: {activeBusRouteRoad.name} ({activeBusRouteRoad.distance_km} km)
                     </Badge>
-                  )}
+                  ) : journey?.isRoad ? (
+                    <Badge className="bg-[#00E5FF] text-black font-bold text-[10px]">
+                      🛣️ Street Path Active ({journey.km} km)
+                    </Badge>
+                  ) : null}
                 </div>
 
                 <MapView
@@ -417,7 +470,11 @@ export default function Home() {
                   campuses={campuses}
                   hubs={hubs}
                   police={police}
-                  roadCoordinates={roadData?.coordinates}
+                  roadCoordinates={roadData?.coordinates || activeBusRouteRoad?.coordinates || []}
+                  activeRouteName={activeBusRouteRoad?.name || (journey?.isRoad ? "Custom Road Corridor" : "")}
+                  activeVehicleNo={activeBusRouteRoad?.vehicleNo || "OD-02-KIIT-101"}
+                  roadDistanceKm={activeBusRouteRoad?.distance_km || journey?.km}
+                  roadDurationMin={activeBusRouteRoad?.duration_min || journey?.estMinutes}
                   d1={d1}
                   d2={d2}
                   onSelectStop={(st) => {
@@ -432,7 +489,7 @@ export default function Home() {
                     }
                   }}
                   onMapClick={handleMapCoordinatePick}
-                  height="52vh"
+                  height="54vh"
                 />
               </CardContent>
             </Card>
@@ -730,13 +787,23 @@ export default function Home() {
                           <span>💺 {r.available_seats ?? 15} seats</span>
                           <span>♿ {r.wheelchair_spaces ?? 2} wheelchair spaces</span>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => simulateArrivalAlert(r)}
-                          className="text-[#00E5FF] hover:underline flex items-center gap-1 text-[11px] font-semibold"
-                        >
-                          <Bell size={11} /> Simulate Alert
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleShowBusRouteOnRoad(r)}
+                            className="text-[#00E5FF] hover:underline flex items-center gap-1 text-[11px] font-bold"
+                          >
+                            <Route size={11} /> Show Road
+                          </button>
+                          <span>·</span>
+                          <button
+                            type="button"
+                            onClick={() => simulateArrivalAlert(r)}
+                            className="text-white/70 hover:text-white flex items-center gap-1 text-[11px] font-semibold"
+                          >
+                            <Bell size={11} /> Alert
+                          </button>
+                        </div>
                       </div>
 
                       {/* Detour Alert Banner if Present (Module 5) */}
