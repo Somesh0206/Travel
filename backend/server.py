@@ -393,6 +393,32 @@ async def list_bugs(user: dict = Depends(get_current_user)):
 
 
 # --------- Static demo data: routes/stops for KIIT & Bhubaneswar ---------
+KIIT_CAMPUSES = [
+    {"id": "c1", "name": "Campus 1 (Administration & Old Campus)", "short": "Campus 1", "lat": 20.3533, "lng": 85.8162, "accessible": True, "category": "KIIT Campus"},
+    {"id": "c3", "name": "Campus 3 (Computer Science & Engineering)", "short": "Campus 3 (CSE)", "lat": 20.3558, "lng": 85.8175, "accessible": True, "category": "KIIT Campus"},
+    {"id": "c5", "name": "Campus 5 (Electrical & Civil Engineering)", "short": "Campus 5", "lat": 20.3524, "lng": 85.8189, "accessible": True, "category": "KIIT Campus"},
+    {"id": "c6", "name": "Campus 6 (School of Law)", "short": "Campus 6 (Law)", "lat": 20.3592, "lng": 85.8234, "accessible": True, "category": "KIIT Campus"},
+    {"id": "c7", "name": "Campus 7 (KSOM - School of Management)", "short": "Campus 7 (KSOM)", "lat": 20.3567, "lng": 85.8210, "accessible": True, "category": "KIIT Campus"},
+    {"id": "c11", "name": "Campus 11 (School of Biotechnology)", "short": "Campus 11 (Biotech)", "lat": 20.3512, "lng": 85.8248, "accessible": True, "category": "KIIT Campus"},
+    {"id": "c15", "name": "Campus 15 (KIMS Medical Hospital)", "short": "Campus 15 (KIMS)", "lat": 20.3541, "lng": 85.8262, "accessible": True, "category": "KIIT Campus"},
+    {"id": "c25", "name": "Campus 25 (KIIT International School)", "short": "Campus 25 (KINT)", "lat": 20.3620, "lng": 85.8290, "accessible": True, "category": "KIIT Campus"},
+    {"id": "ksac", "name": "KIIT Student Activity Centre (KSAC)", "short": "KSAC", "lat": 20.3518, "lng": 85.8205, "accessible": True, "category": "KIIT Campus"},
+    {"id": "lake", "name": "KIIT Lake Gate", "short": "KIIT Lake", "lat": 20.3492, "lng": 85.8213, "accessible": True, "category": "KIIT Campus"},
+]
+
+PAN_INDIA_HUBS = [
+    {"id": "bbi_apt", "name": "Biju Patnaik International Airport (BBI, Bhubaneswar)", "short": "Bhubaneswar Airport (BBI)", "lat": 20.2444, "lng": 85.8178, "city": "Bhubaneswar", "category": "Airport"},
+    {"id": "bbs_rly", "name": "Bhubaneswar Railway Station (BBS)", "short": "Bhubaneswar Railway Stn", "lat": 20.2701, "lng": 85.8412, "city": "Bhubaneswar", "category": "Railway Station"},
+    {"id": "isbt_brm", "name": "Baramunda ISBT Bus Terminal", "short": "Baramunda ISBT", "lat": 20.2874, "lng": 85.7891, "city": "Bhubaneswar", "category": "Bus Stand"},
+    {"id": "ccu_apt", "name": "Netaji Subhash Chandra Bose Intl Airport (Kolkata)", "short": "Kolkata Airport (CCU)", "lat": 22.6547, "lng": 88.4467, "city": "Kolkata", "category": "Airport"},
+    {"id": "hwh_rly", "name": "Howrah Junction Railway Station (Kolkata)", "short": "Howrah Stn (Kolkata)", "lat": 22.5839, "lng": 88.3426, "city": "Kolkata", "category": "Railway Station"},
+    {"id": "del_apt", "name": "Indira Gandhi International Airport (DEL, New Delhi)", "short": "Delhi Airport (DEL)", "lat": 28.5562, "lng": 77.1000, "city": "New Delhi", "category": "Airport"},
+    {"id": "ndls_rly", "name": "New Delhi Railway Station (NDLS)", "short": "New Delhi Stn", "lat": 28.6430, "lng": 77.2194, "city": "New Delhi", "category": "Railway Station"},
+    {"id": "csmt_rly", "name": "Chhatrapati Shivaji Maharaj Terminus (CSMT, Mumbai)", "short": "CSMT Mumbai", "lat": 18.9400, "lng": 72.8353, "city": "Mumbai", "category": "Railway Station"},
+    {"id": "sbc_rly", "name": "KSR Bengaluru City Railway Station (Bengaluru)", "short": "Bengaluru City Stn", "lat": 12.9781, "lng": 77.5697, "city": "Bengaluru", "category": "Railway Station"},
+    {"id": "hyd_rly", "name": "Secunderabad / Hyderabad Junction", "short": "Hyderabad Stn", "lat": 17.4339, "lng": 78.5016, "city": "Hyderabad", "category": "Railway Station"},
+]
+
 DEMO_STOPS = [
     {"id": "s1", "name": "KIIT Square", "lat": 20.3558, "lng": 85.8175, "accessible": True},
     {"id": "s2", "name": "KIIT Lake Gate", "lat": 20.3492, "lng": 85.8213, "accessible": True},
@@ -416,6 +442,44 @@ POLICE_STATIONS = [
     {"name": "Chandrasekharpur PS", "lat": 20.3196, "lng": 85.8154, "phone": "+91-674-2743100"},
     {"name": "Nayapalli PS", "lat": 20.2932, "lng": 85.8194, "phone": "+91-674-2555100"},
 ]
+
+
+class NavLinksIn(BaseModel):
+    origin: str
+    destination: str
+    mode: Optional[str] = "transit"  # transit | driving | walking
+
+
+@api.get("/transit/campuses")
+async def get_campuses():
+    return KIIT_CAMPUSES
+
+
+@api.get("/transit/hubs")
+async def get_hubs():
+    return PAN_INDIA_HUBS
+
+
+@api.post("/transit/nav-links")
+async def get_nav_links(body: NavLinksIn):
+    from urllib.parse import quote
+    orig = quote(body.origin)
+    dest = quote(body.destination)
+    m = body.mode.lower() if body.mode else "transit"
+
+    # Map mode to Apple Maps flag
+    dirflg = "r" if m == "transit" else ("w" if m == "walking" else "d")
+    
+    gmaps_url = f"https://www.google.com/maps/dir/?api=1&origin={orig}&destination={dest}&travelmode={m}"
+    apple_url = f"https://maps.apple.com/?saddr={orig}&daddr={dest}&dirflg={dirflg}"
+    
+    return {
+        "origin": body.origin,
+        "destination": body.destination,
+        "mode": m,
+        "google_maps_url": gmaps_url,
+        "apple_maps_url": apple_url,
+    }
 
 
 @api.get("/transit/stops")

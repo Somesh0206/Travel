@@ -154,6 +154,33 @@ def test_transit_routes():
     assert r.status_code == 200 and len(r.json()) >= 2
 
 
+def test_transit_campuses():
+    r = requests.get(f"{API}/transit/campuses")
+    assert r.status_code == 200 and len(r.json()) >= 5
+    first = r.json()[0]
+    assert "Campus 1" in first["name"]
+
+
+def test_transit_hubs():
+    r = requests.get(f"{API}/transit/hubs")
+    assert r.status_code == 200 and len(r.json()) >= 5
+    cities = [h["city"] for h in r.json()]
+    assert "Bhubaneswar" in cities
+    assert "Kolkata" in cities
+
+
+def test_transit_nav_links():
+    r = requests.post(f"{API}/transit/nav-links", json={
+        "origin": "KIIT Campus 3",
+        "destination": "Bhubaneswar Airport BBI",
+        "mode": "transit"
+    })
+    assert r.status_code == 200
+    data = r.json()
+    assert "google.com/maps/dir" in data["google_maps_url"]
+    assert "maps.apple.com" in data["apple_maps_url"]
+
+
 def test_police():
     r = requests.get(f"{API}/safety/police")
     assert r.status_code == 200 and len(r.json()) >= 1
