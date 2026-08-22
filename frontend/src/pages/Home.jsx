@@ -333,13 +333,16 @@ export default function Home() {
               </p>
             </div>
 
-            {/* Quick Launch Shortcuts: Driver Portal, Chat Admin & Offline Pack */}
+            {/* Quick Launch Shortcuts: Chat with Admin, Driver Portal, Aid & Offline Pack */}
             <div className="flex flex-wrap gap-2.5 w-full lg:w-auto">
               <Button
                 onClick={() => setChatOpen(true)}
-                className="pill-btn bg-gradient-to-r from-[#00E5FF] to-[#00b4d8] text-black font-bold hover:brightness-110 shadow-lg shadow-[#00E5FF]/20 text-xs sm:text-sm"
+                className="pill-btn bg-gradient-to-r from-[#00E5FF] to-[#00b4d8] text-black font-extrabold hover:brightness-110 shadow-lg shadow-[#00E5FF]/30 text-xs sm:text-sm px-4 py-2.5 flex items-center gap-2 border border-white/20"
+                data-testid="hero-chat-admin-btn"
               >
-                <MessageSquare size={15} className="mr-1.5" /> 🔒 Live Support
+                <MessageSquare size={16} className="text-black" />
+                <span>Chat with Admin</span>
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse ml-0.5" />
               </Button>
               <Button
                 onClick={() => setAssistOpen(true)}
@@ -828,6 +831,36 @@ export default function Home() {
             </Card>
           </div>
         </div>
+
+        {/* Live Support & Encrypted Admin Chat Action Banner */}
+        <Card className="mova-glass border border-[#00E5FF]/30 bg-gradient-to-r from-[#161b22] via-[#0d1117] to-[#161b22] shadow-xl overflow-hidden">
+          <CardContent className="p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-[#00E5FF]/10 border border-[#00E5FF]/40 grid place-items-center text-[#00E5FF] shrink-0 shadow-lg shadow-cyan-500/10">
+                <MessageSquare size={24} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-base text-white">Live Transit Support & Dispatch Desk</h3>
+                  <Badge className="bg-[#00E5FF]/20 text-[#00E5FF] border border-[#00E5FF]/30 text-[10px] py-0 font-mono">
+                    AES-256 E2EE
+                  </Badge>
+                </div>
+                <p className="text-xs text-white/70 mt-0.5">
+                  Need assistance with real-time arrivals, wheelchair ramp boarding, or safety verification? Chat securely with the Admin.
+                </p>
+              </div>
+            </div>
+
+            <Button
+              onClick={() => setChatOpen(true)}
+              className="pill-btn bg-[#00E5FF] hover:bg-[#00b8cc] text-black font-extrabold px-5 py-2.5 shrink-0 shadow-lg shadow-[#00E5FF]/25 text-xs sm:text-sm flex items-center gap-2"
+              data-testid="card-chat-admin-btn"
+            >
+              <MessageSquare size={16} /> Open Chat with Admin
+            </Button>
+          </CardContent>
+        </Card>
       </main>
 
       {/* Module 2: Boarding Assistance Request Dialog */}
