@@ -19,11 +19,11 @@
 }
 
 .light {
-  --mova-bg: #f6f7fb;
+  --mova-bg: #f8fafc;
   --mova-surface: #ffffff;
   --mova-elevated: #ffffff;
-  --mova-text: #0a0a14;
-  --mova-text-muted: #52526a;
+  --mova-text: #000000;
+  --mova-text-muted: #1e293b;
 }
 
 @layer base {
@@ -51,23 +51,23 @@
   }
   .light {
     --background: 220 20% 97%;
-    --foreground: 240 20% 6%;
+    --foreground: 0 0% 0%;
     --card: 0 0% 100%;
-    --card-foreground: 240 20% 6%;
+    --card-foreground: 0 0% 0%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 20% 6%;
+    --popover-foreground: 0 0% 0%;
     --primary: 190 100% 34%;
     --primary-foreground: 0 0% 100%;
     --secondary: 220 15% 92%;
-    --secondary-foreground: 240 20% 10%;
+    --secondary-foreground: 0 0% 0%;
     --muted: 220 15% 92%;
-    --muted-foreground: 240 8% 38%;
+    --muted-foreground: 240 8% 20%;
     --accent: 274 60% 45%;
     --accent-foreground: 0 0% 100%;
     --destructive: 4 82% 50%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 15% 85%;
-    --input: 220 15% 92%;
+    --border: 220 15% 82%;
+    --input: 220 15% 90%;
     --ring: 190 100% 34%;
   }
 }
@@ -89,7 +89,7 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
-  h1, h2, h3, h4 {
+  h1, h2, h3, h4, h5, h6 {
     font-family: "Outfit", sans-serif;
     letter-spacing: -0.02em;
   }
@@ -104,8 +104,8 @@
 .light .mova-hero-grid {
   background-image:
     radial-gradient(1200px 400px at 10% -20%, rgba(0, 154, 178, 0.10), transparent 60%),
-    radial-gradient(900px 400px at 100% 0%, rgba(120, 40, 200, 0.10), transparent 60%),
-    linear-gradient(180deg, #f6f7fb 0%, #eef0f7 100%);
+    radial-gradient(900px 400px at 100% 0%, rgba(120, 40, 200, 0.08), transparent 60%),
+    linear-gradient(180deg, #f8fafc 0%, #edf2f7 100%);
 }
 
 .mova-glass {
@@ -115,8 +115,10 @@
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 .light .mova-glass {
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(20, 20, 40, 0.08);
+  background: rgba(255, 255, 255, 0.95);
+  color: #000000;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
 }
 
 .mova-noise {
@@ -145,7 +147,7 @@
   filter: drop-shadow(0 0 4px rgba(0, 229, 255, 0.55));
 }
 
-/* Leaflet dark tweak - keep panes below shadcn overlays */
+/* Leaflet map styles */
 .leaflet-container {
   background: #0a0a0e;
   font-family: "IBM Plex Sans", sans-serif;
@@ -167,7 +169,7 @@
   border: 1px solid rgba(0, 229, 255, 0.25);
 }
 .leaflet-popup-tip { background: rgba(18, 18, 26, 0.92); }
-.light .leaflet-popup-content-wrapper { background: #fff; color: #0a0a14; border-color: rgba(0,154,178,0.3); }
+.light .leaflet-popup-content-wrapper { background: #fff; color: #000000; border-color: rgba(0,154,178,0.3); }
 .light .leaflet-popup-tip { background: #fff; }
 
 .stagger-in > * {
@@ -188,4 +190,169 @@
 
 @media (prefers-reduced-motion: reduce) {
   .stagger-in > *, .sos-pulse { animation: none; }
+}
+
+/* ==========================================================================
+   LIGHT MODE TYPOGRAPHY & HIGH CONTRAST (BLACK TEXTS)
+   ========================================================================== */
+
+.light {
+  color: #000000;
+}
+
+.light h1,
+.light h2,
+.light h3,
+.light h4,
+.light h5,
+.light h6 {
+  color: #000000 !important;
+}
+
+.light p,
+.light label,
+.light table,
+.light td,
+.light th,
+.light input,
+.light textarea,
+.light select {
+  color: #000000;
+}
+
+/* Transform hardcoded dark-mode white/light text classes to crisp black in light mode */
+.light .text-white:not([class*="bg-emerald-"]):not([class*="bg-[#00E5FF]"]):not([class*="bg-blue-"]):not([class*="bg-cyan-"]):not([class*="bg-red-"]):not([class*="bg-[#FF3B30]"]):not([class*="bg-[#B24CFF]"]):not([class*="bg-purple-"]):not([class*="bg-amber-"]),
+.light .text-slate-100,
+.light .text-slate-200,
+.light .text-slate-300 {
+  color: #000000 !important;
+}
+
+.light .text-white\/95,
+.light .text-white\/90,
+.light .text-white\/85,
+.light .text-white\/80 {
+  color: #000000 !important;
+}
+
+.light .text-white\/75,
+.light .text-white\/70,
+.light .text-white\/65 {
+  color: rgba(0, 0, 0, 0.85) !important;
+}
+
+.light .text-white\/60,
+.light .text-white\/55,
+.light .text-white\/50 {
+  color: rgba(0, 0, 0, 0.75) !important;
+}
+
+.light .text-white\/45,
+.light .text-white\/40,
+.light .text-white\/35,
+.light .text-white\/30 {
+  color: rgba(0, 0, 0, 0.65) !important;
+}
+
+.light .text-slate-400,
+.light .text-slate-500 {
+  color: #1e293b !important;
+}
+
+.light .opacity-80,
+.light .opacity-75,
+.light .opacity-70 {
+  opacity: 0.95 !important;
+  color: #000000;
+}
+
+.light .opacity-60,
+.light .opacity-50 {
+  opacity: 0.85 !important;
+  color: #0f172a;
+}
+
+/* Light mode panels, cards, and dialogue containers */
+.light .bg-slate-900\/80,
+.light .bg-slate-900,
+.light .bg-slate-800\/40,
+.light .bg-slate-800\/80,
+.light .bg-black\/20,
+.light .bg-black\/30,
+.light .bg-black\/40,
+.light .bg-black\/50,
+.light .bg-\[\#0d1117\]\/95,
+.light .bg-\[\#12121a\],
+.light .bg-\[\#161b22\] {
+  background-color: rgba(255, 255, 255, 0.96) !important;
+  color: #000000 !important;
+  border-color: rgba(0, 0, 0, 0.12) !important;
+}
+
+.light .bg-slate-800,
+.light .bg-slate-800\/60,
+.light .bg-slate-800\/50,
+.light .bg-slate-700\/50 {
+  background-color: #f1f5f9 !important;
+  color: #000000 !important;
+  border-color: #cbd5e1 !important;
+}
+
+.light .bg-white\/5,
+.light .bg-white\/10 {
+  background-color: rgba(0, 0, 0, 0.04) !important;
+  border-color: rgba(0, 0, 0, 0.10) !important;
+  color: #000000 !important;
+}
+
+.light .border-white\/10,
+.light .border-white\/5,
+.light .border-white\/15,
+.light .border-white\/20,
+.light .border-slate-800,
+.light .border-slate-700,
+.light .border-slate-700\/50,
+.light .border-slate-700\/70 {
+  border-color: rgba(0, 0, 0, 0.12) !important;
+}
+
+/* Inputs, Textareas & Selects in Light Mode */
+.light input,
+.light textarea,
+.light select {
+  color: #000000 !important;
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+}
+
+.light input::placeholder,
+.light textarea::placeholder {
+  color: rgba(0, 0, 0, 0.50) !important;
+}
+
+/* Tables and list rows in Light Mode */
+.light table th {
+  background-color: #f1f5f9 !important;
+  color: #000000 !important;
+  border-color: #e2e8f0 !important;
+}
+
+.light table td {
+  color: #000000 !important;
+  border-color: #f1f5f9 !important;
+}
+
+.light .divide-slate-800\/60 > * + *,
+.light .divide-white\/5 > * + *,
+.light .divide-white\/10 > * + * {
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+/* Tab triggers and navigation in Light Mode */
+.light [data-state="inactive"] {
+  color: #334155 !important;
+}
+.light [data-state="active"] {
+  color: #000000 !important;
+  font-weight: 700 !important;
 }
