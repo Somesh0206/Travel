@@ -269,6 +269,94 @@ def test_chat_mark_read(user, admin):
     assert r.status_code == 200
 
 
+def test_multi_user_chat_database_isolation(admin):
+    headers_admin, _ = admin
+
+    # Register User A
+    email_a = f"usera_{uuid.uuid4().hex[:6]}@test.com"
+    r_a = client.post("/api/auth/register", json={"name": "User Alpha", "email": email_a, "password": "password123"})
+    assert r_a.status_code == 200
+    token_a = r_a.json()["token"]
+    headers_a = {"Authorization": f"Bearer {token_a}"}
+
+    # Register User B
+    email_b = f"userb_{uuid.uuid4().hex[:6]}@test.com"
+    r_b = client.post("/api/auth/register", json={"name": "User Beta", "email": email_b, "password": "password123"})
+    assert r_b.status_code == 200
+    token_b = r_b.json()["token"]
+    headers_b = {"Authorization": f"Bearer {token_b}"}
+
+    # User A sends a message
+    r1 = client.post("/api/chat/send", json={
+        "ciphertext": "cipher_from_user_a",
+        "iv": "iv_a",
+        "receiver_email": "admin@mova.app"
+    }, headers=headers_a)
+    assert r1.status_code == 200
+    msg_a_id = r1.json()["id"]
+
+    # User B sends a message
+    r2 = client.post("/api/chat/send", json={
+        "ciphertext": "cipher_from_user_b",
+        "iv": "iv_b",
+        "receiver_email": "admin@mova.app"
+    }, headers=headers_b)
+    assert r2.status_code == 200
+    msg_b_id = r2.json()["id"]
+
+    # Verify User A only sees User A's message
+    res_a_msgs = client.get("/api/chat/messages", headers=headers_a).json()
+    assert any(m["id"] == msg_a_id for m in res_a_msgs)
+    assert not any(m["id"] == msg_b_id for m in res_a_msgs)
+
+    # Verify User B only sees User B's message
+    res_b_msgs = client.get("/api/chat/messages", headers=headers_b).json()
+    assert any(m["id"] == msg_b_id for m in res_b_msgs)
+    assert not any(m["id"] == msg_a_id for m in res_b_msgs)
+
+    # Verify Admin sees both separate threads
+    threads = client.get("/api/chat/threads", headers=headers_admin).json()
+    thread_emails = [t["user_email"] for t in threads]
+    assert email_a in thread_emails
+    assert email_b in thread_emails
+
+
+def test_guest_chat_flow(admin):
+    headers_admin, _ = admin
+    guest_gid = f"guest_{uuid.uuid4().hex[:8]}"
+    guest_headers = {
+        "X-Guest-ID": guest_gid,
+        "X-Guest-Name": "Guest Commuter 99"
+    }
+
+    # Guest sends message
+    r = client.post("/api/chat/send", json={
+        "ciphertext": "guest_cipher_packet",
+        "iv": "guest_iv_123",
+        "receiver_email": "admin@mova.app"
+    }, headers=guest_headers)
+    assert r.status_code == 200
+    guest_msg = r.json()
+    assert guest_msg["sender_id"] == guest_gid
+
+    # Admin reads guest thread and replies
+    admin_thread_msgs = client.get(f"/api/chat/messages?with_user={guest_msg['sender_email']}", headers=headers_admin).json()
+    assert any(m["id"] == guest_msg["id"] for m in admin_thread_msgs)
+
+    # Admin replies to guest
+    r_reply = client.post("/api/chat/send", json={
+        "ciphertext": "admin_reply_to_guest_cipher",
+        "iv": "admin_reply_iv",
+        "receiver_email": guest_msg["sender_email"]
+    }, headers=headers_admin)
+    assert r_reply.status_code == 200
+
+    # Guest fetches messages and sees admin reply
+    guest_feed = client.get("/api/chat/messages", headers=guest_headers).json()
+    assert any(m["id"] == r_reply.json()["id"] for m in guest_feed)
+
+
+
 # ---------- Logout ----------
 def test_logout(user):
     headers_user, _ = user

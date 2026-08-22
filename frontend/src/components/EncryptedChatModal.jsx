@@ -26,16 +26,34 @@ export default function EncryptedChatModal({ isOpen, onClose }) {
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState("Securing AES-256 Tunnel...");
+  const [guestId, setGuestId] = useState("");
   const messagesEndRef = useRef(null);
+
+  useEffect(() => {
+    let gid = localStorage.getItem("mova_guest_id");
+    if (!gid) {
+      gid = `guest_${Math.random().toString(36).substring(2, 8)}`;
+      localStorage.setItem("mova_guest_id", gid);
+    }
+    setGuestId(gid);
+  }, []);
+
+  const getChatHeaders = () => {
+    if (user) return {};
+    const gid = guestId || localStorage.getItem("mova_guest_id") || "guest_default";
+    return {
+      "X-Guest-ID": gid,
+      "X-Guest-Name": `Guest Commuter (${gid.replace("guest_", "")})`
+    };
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   const fetchMessages = async () => {
-    if (!user) return;
     try {
-      const res = await api.get("/chat/messages");
+      const res = await api.get("/chat/messages", { headers: getChatHeaders() });
       const rawMsgs = res.data || [];
       setMessages(rawMsgs);
       setConnectionStatus("🔒 E2EE Secure Node Active");
@@ -59,7 +77,7 @@ export default function EncryptedChatModal({ isOpen, onClose }) {
   };
 
   useEffect(() => {
-    if (isOpen && user) {
+    if (isOpen) {
       setLoading(true);
       fetchMessages().finally(() => setLoading(false));
 
@@ -67,7 +85,7 @@ export default function EncryptedChatModal({ isOpen, onClose }) {
       return () => clearInterval(interval);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, user]);
+  }, [isOpen, user, guestId]);
 
   useEffect(() => {
     if (isOpen) {
@@ -77,7 +95,7 @@ export default function EncryptedChatModal({ isOpen, onClose }) {
 
   const handleSendMessage = async (customText = null) => {
     const textToSend = typeof customText === "string" ? customText : inputVal;
-    if (!textToSend.trim() || !user || sending) return;
+    if (!textToSend.trim() || sending) return;
 
     setSending(true);
     try {
@@ -94,7 +112,7 @@ export default function EncryptedChatModal({ isOpen, onClose }) {
         preview_hint: "🔒 Encrypted Message"
       };
 
-      const res = await api.post("/chat/send", payload);
+      const res = await api.post("/chat/send", payload, { headers: getChatHeaders() });
       const sentMsg = res.data;
 
       // 3. Immediately store decrypted in local map
@@ -158,7 +176,9 @@ export default function EncryptedChatModal({ isOpen, onClose }) {
           <span className="flex items-center gap-1.5">
             <Lock size={12} /> Messages are client-side encrypted before transmission.
           </span>
-          <span className="font-mono text-[10px] text-white/40">TLS + GCM</span>
+          <span className="font-mono text-[10px] text-white/50">
+            {user ? user.name : `Guest (${guestId ? guestId.replace("guest_", "") : "Ready"})`}
+          </span>
         </div>
 
         {/* Message Stream */}
@@ -190,32 +210,25 @@ export default function EncryptedChatModal({ isOpen, onClose }) {
             </div>
           ) : (
             messages.map((m) => {
-              const isMe = m.sender_email === user?.email;
-              const decryptedContent = decryptedMap[m.id] || "Decrypting payload...";
+              const decryptedContent = decryptedMap[m.id] || "🔒 Decrypting cipher packet...";
+              const isMe = (user && m.sender_email === user.email) || (!user && m.sender_id === guestId) || (m.sender_role !== "admin");
 
               return (
                 <div
                   key={m.id}
                   className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}
                 >
-                  <div className="flex items-center gap-1.5 mb-1 px-1 text-[11px] text-white/50 font-mono">
-                    {isMe ? (
-                      <>
-                        <span>You</span>
-                        <User size={11} />
-                      </>
-                    ) : (
-                      <>
-                        <ShieldCheck size={11} className="text-[#00E5FF]" />
-                        <span className="text-[#00E5FF] font-semibold">MOVA Admin</span>
-                      </>
-                    )}
-                    <span>·</span>
-                    <span>{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  <div className="flex items-center gap-1.5 mb-1 px-1">
+                    <span className="text-[10px] text-white/50 font-medium">
+                      {isMe ? "You (Encrypted)" : "MOVA Transit Desk (Admin)"}
+                    </span>
+                    <span className="text-[9px] text-white/30 font-mono">
+                      {new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </span>
                   </div>
 
                   <div
-                    className={`max-w-[82%] rounded-2xl px-4 py-2.5 text-sm shadow-md ${
+                    className={`p-3 rounded-2xl max-w-[85%] text-xs shadow-md ${
                       isMe
                         ? "bg-gradient-to-r from-[#00b4d8] to-[#0077b6] text-white rounded-tr-none"
                         : "bg-[#1f2937] border border-white/10 text-white rounded-tl-none"
@@ -223,12 +236,6 @@ export default function EncryptedChatModal({ isOpen, onClose }) {
                   >
                     <div className="leading-relaxed whitespace-pre-wrap break-words">
                       {decryptedContent}
-                    </div>
-
-                    <div className="flex items-center justify-end gap-1.5 mt-1 text-[10px] opacity-60">
-                      <Lock size={9} />
-                      <span className="text-[9px] font-mono">AES</span>
-                      {isMe && <CheckCheck size={12} className="text-cyan-200" />}
                     </div>
                   </div>
                 </div>
@@ -249,6 +256,7 @@ export default function EncryptedChatModal({ isOpen, onClose }) {
           ].map((chip, idx) => (
             <button
               key={idx}
+              type="button"
               onClick={() => handleSendMessage(chip)}
               className="text-[11px] bg-white/5 hover:bg-[#00E5FF]/20 border border-white/10 hover:border-[#00E5FF]/40 text-white/70 hover:text-white rounded-full px-2.5 py-1 shrink-0 transition"
             >
@@ -269,12 +277,12 @@ export default function EncryptedChatModal({ isOpen, onClose }) {
             value={inputVal}
             onChange={(e) => setInputVal(e.target.value)}
             placeholder="Type encrypted message to Admin..."
-            disabled={!user || sending}
+            disabled={sending}
             className="flex-1 bg-black/40 border-white/10 text-white placeholder:text-white/30 rounded-xl text-sm focus-visible:ring-[#00E5FF]"
           />
           <Button
             type="submit"
-            disabled={!inputVal.trim() || !user || sending}
+            disabled={!inputVal.trim() || sending}
             className="bg-[#00E5FF] hover:bg-[#00b8cc] text-black font-bold rounded-xl px-4 shrink-0 transition"
           >
             {sending ? (

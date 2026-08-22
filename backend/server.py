@@ -310,6 +310,28 @@ async def get_current_user(request: Request) -> dict:
     return user_copy
 
 
+async def get_chat_user(request: Request) -> dict:
+    """Authenticates registered users via JWT or provides isolated guest commuter identity via X-Guest-ID."""
+    try:
+        return await get_current_user(request)
+    except HTTPException:
+        guest_id = request.headers.get("X-Guest-ID") or request.cookies.get("guest_id")
+        guest_name = request.headers.get("X-Guest-Name") or "Guest Commuter"
+        if guest_id:
+            clean_gid = guest_id.lower().strip()
+            guest_email = f"{clean_gid}@mova.app" if "@" not in clean_gid else clean_gid
+            guest_user = {
+                "id": clean_gid,
+                "name": guest_name,
+                "email": guest_email,
+                "role": "guest"
+            }
+            MEM_USERS[guest_email] = guest_user
+            MEM_USERS_BY_ID[clean_gid] = guest_user
+            return guest_user
+        raise HTTPException(status_code=401, detail="Please log in or initialize guest session to chat")
+
+
 async def require_admin(user: dict = Depends(get_current_user)) -> dict:
     if user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin only")
@@ -523,7 +545,7 @@ async def list_bugs(user: dict = Depends(get_current_user)):
 
 # ---------- Encrypted Chat Endpoints ----------
 @api.post("/chat/send")
-async def send_chat_message(body: ChatMessageIn, user: dict = Depends(get_current_user)):
+async def send_chat_message(body: ChatMessageIn, user: dict = Depends(get_chat_user)):
     receiver = (body.receiver_email or "admin@mova.app").lower().strip()
     if user.get("role") != "admin":
         receiver = "admin@mova.app"
@@ -552,7 +574,7 @@ async def send_chat_message(body: ChatMessageIn, user: dict = Depends(get_curren
 @api.get("/chat/messages")
 async def get_chat_messages(
     with_user: Optional[str] = None,
-    user: dict = Depends(get_current_user)
+    user: dict = Depends(get_chat_user)
 ):
     if user.get("role") == "admin":
         target_user = with_user or "passenger@mova.app"
@@ -569,7 +591,7 @@ async def get_chat_threads(user: dict = Depends(require_admin)):
 
 
 @api.post("/chat/mark-read")
-async def mark_chat_read(body: MarkReadIn, user: dict = Depends(get_current_user)):
+async def mark_chat_read(body: MarkReadIn, user: dict = Depends(get_chat_user)):
     await db_mark_chat_read(body.with_user, user.get("role", "passenger"))
     return {"ok": True}
 
