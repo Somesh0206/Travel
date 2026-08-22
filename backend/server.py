@@ -104,7 +104,85 @@ def _save_chat_file():
         logger.warning("Could not save chat file: %s", e)
 
 
+def _seed_initial_chats():
+    global MEM_CHAT
+    _load_chat_file()
+    if len(MEM_CHAT) >= 5:
+        return
+
+    try:
+        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        import base64
+
+        secret = b'mova_secure_transit_channel_2026'
+        salt = b'mova_transit_e2ee_salt_v1'
+        kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt, iterations=100000)
+        key = kdf.derive(secret)
+
+        def _enc(text):
+            aesgcm = AESGCM(key)
+            iv = os.urandom(12)
+            ct = aesgcm.encrypt(iv, text.encode('utf-8'), None)
+            return base64.b64encode(ct).decode('ascii'), base64.b64encode(iv).decode('ascii')
+
+        now = datetime.now(timezone.utc)
+        conversations = [
+            # Thread 1: Aarav Sharma (user@mova.app)
+            [
+                {'sender_id': 'usr-101', 'sender_email': 'user@mova.app', 'sender_name': 'Aarav Sharma', 'sender_role': 'commuter', 'receiver_email': 'admin@mova.app', 'text': 'Hello Admin desk! Is the wheelchair boarding lift operational at Master Canteen for Route 10?', 'delta_mins': 120, 'read': True},
+                {'sender_id': 'usr-admin', 'sender_email': 'admin@mova.app', 'sender_name': 'MOVA Transit Desk', 'sender_role': 'admin', 'receiver_email': 'user@mova.app', 'text': 'Hi Aarav! Yes, CRUT Low-Floor Bus #OD-02-AX-4821 is fitted with hydraulic ramps and is arriving at Bay 3 in 6 minutes.', 'delta_mins': 115, 'read': True},
+                {'sender_id': 'usr-101', 'sender_email': 'user@mova.app', 'sender_name': 'Aarav Sharma', 'sender_role': 'commuter', 'receiver_email': 'admin@mova.app', 'text': 'Thank you so much, I am waiting near the tactile ramp at Bay 3.', 'delta_mins': 110, 'read': True},
+                {'sender_id': 'usr-admin', 'sender_email': 'admin@mova.app', 'sender_name': 'MOVA Transit Desk', 'sender_role': 'admin', 'receiver_email': 'user@mova.app', 'text': 'Driver Rajesh has been notified and will assist you with boarding immediately.', 'delta_mins': 105, 'read': True}
+            ],
+            # Thread 2: Priya Patel (priya@mova.app)
+            [
+                {'sender_id': 'usr-102', 'sender_email': 'priya@mova.app', 'sender_name': 'Priya Patel', 'sender_role': 'commuter', 'receiver_email': 'admin@mova.app', 'text': 'Hi, I need assistance verifying my accessible student concession pass for the upcoming month.', 'delta_mins': 60, 'read': True},
+                {'sender_id': 'usr-admin', 'sender_email': 'admin@mova.app', 'sender_name': 'MOVA Transit Desk', 'sender_role': 'admin', 'receiver_email': 'priya@mova.app', 'text': 'Hello Priya! Your concession pass #PASS-2026-8819 is active and verified for all AC and Non-AC routes through Dec 2026.', 'delta_mins': 55, 'read': True}
+            ],
+            # Thread 3: Rajesh Kumar (rajesh@mova.app)
+            [
+                {'sender_id': 'usr-103', 'sender_email': 'rajesh@mova.app', 'sender_name': 'Rajesh Kumar', 'sender_role': 'commuter', 'receiver_email': 'admin@mova.app', 'text': 'Urgent: Could someone confirm if the night escort shuttle is running tonight from KIIT Campus 6 to Patia?', 'delta_mins': 30, 'read': False}
+            ],
+            # Thread 4: Guest Commuter (guest_88a21f@mova.app)
+            [
+                {'sender_id': 'guest-88a', 'sender_email': 'guest_88a21f@mova.app', 'sender_name': 'Guest Commuter (88a21f)', 'sender_role': 'guest', 'receiver_email': 'admin@mova.app', 'text': 'Hello, where can I find the step-free tactile path near Rasulgarh Square?', 'delta_mins': 15, 'read': False}
+            ]
+        ]
+
+        existing_ids = {m.get("id") for m in MEM_CHAT if m.get("id")}
+        for thread in conversations:
+            for item in thread:
+                ct, iv = _enc(item['text'])
+                ts = (now - timedelta(minutes=item['delta_mins'])).isoformat()
+                msg_id = f"msg_{uuid.uuid4().hex[:12]}"
+                msg_doc = {
+                    'id': msg_id,
+                    'sender_id': item['sender_id'],
+                    'sender_email': item['sender_email'],
+                    'sender_name': item['sender_name'],
+                    'sender_role': item['sender_role'],
+                    'receiver_email': item['receiver_email'],
+                    'ciphertext': ct,
+                    'iv': iv,
+                    'algorithm': 'AES-GCM-256',
+                    'message_type': 'text',
+                    'preview_hint': '🔒 Encrypted Message',
+                    'read': item['read'],
+                    'created_at': ts
+                }
+                if msg_id not in existing_ids:
+                    MEM_CHAT.append(msg_doc)
+                    existing_ids.add(msg_id)
+
+        _save_chat_file()
+    except Exception as e:
+        logger.warning("Could not seed initial chats: %s", e)
+
+
 _load_chat_file()
+_seed_initial_chats()
 
 
 def _load_activity_file():
@@ -335,6 +413,7 @@ async def db_list_bugs(query: dict) -> List[dict]:
 
 
 async def db_insert_chat(doc: dict):
+    _load_chat_file()
     if not any(m.get("id") == doc.get("id") for m in MEM_CHAT):
         MEM_CHAT.append(doc)
         _save_chat_file()
@@ -345,50 +424,69 @@ async def db_insert_chat(doc: dict):
 
 
 async def db_list_chat(user_email: str, admin_email: str = "admin@mova.app") -> List[dict]:
+    _seed_initial_chats()
+    _load_chat_file()
     u_clean = (user_email or "").lower().strip()
     a_clean = (admin_email or "admin@mova.app").lower().strip()
+    admin_aliases = [a_clean, "admin@mova.app", "admin"]
+
+    docs = []
     try:
         query = {
             "$or": [
-                {"sender_email": u_clean, "receiver_email": a_clean},
-                {"sender_email": a_clean, "receiver_email": u_clean},
+                {"sender_email": u_clean, "receiver_email": {"$in": admin_aliases}},
+                {"sender_email": {"$in": admin_aliases}, "receiver_email": u_clean},
             ]
         }
-        docs = await db.chat_messages.find(query, {"_id": 0}).sort("created_at", 1).to_list(1000)
-        if docs:
-            return docs
+        docs = await db.chat_messages.find(query, {"_id": 0}).sort("created_at", 1).to_list(2000)
     except Exception as e:
         logger.warning("DB list chat skipped: %s", e)
 
-    _load_chat_file()
-    results = [
-        dict(m) for m in MEM_CHAT
-        if (m.get("sender_email") == u_clean and m.get("receiver_email") == a_clean) or
-           (m.get("sender_email") == a_clean and m.get("receiver_email") == u_clean)
-    ]
+    merged_map = {}
+    for m in (docs or []):
+        if m.get("id"):
+            merged_map[m["id"]] = dict(m)
+
+    for m in MEM_CHAT:
+        s = (m.get("sender_email") or "").lower().strip()
+        r = (m.get("receiver_email") or "").lower().strip()
+        if (s == u_clean and r in admin_aliases) or (s in admin_aliases and r == u_clean):
+            if m.get("id") and m.get("id") not in merged_map:
+                merged_map[m["id"]] = dict(m)
+
+    results = list(merged_map.values())
     results.sort(key=lambda x: x.get("created_at", ""))
     return results
 
 
 async def db_list_chat_threads() -> List[dict]:
+    _seed_initial_chats()
     _load_chat_file()
-    user_threads = {}
     docs = []
     try:
-        docs = await db.chat_messages.find({}, {"_id": 0}).sort("created_at", 1).to_list(2000)
-    except Exception:
-        pass
-    if not docs:
-        docs = [dict(m) for m in MEM_CHAT]
+        docs = await db.chat_messages.find({}, {"_id": 0}).sort("created_at", 1).to_list(5000)
+    except Exception as e:
+        logger.warning("DB list chat threads skipped: %s", e)
 
-    for m in docs:
+    merged_map = {}
+    for m in (docs or []):
+        if m.get("id"):
+            merged_map[m["id"]] = dict(m)
+    for m in MEM_CHAT:
+        if m.get("id") and m.get("id") not in merged_map:
+            merged_map[m["id"]] = dict(m)
+
+    admin_aliases = ("admin@mova.app", "admin")
+    user_threads = {}
+
+    for m in merged_map.values():
         sender = (m.get("sender_email") or "").lower().strip()
         receiver = (m.get("receiver_email") or "").lower().strip()
-        is_admin_sender = (sender in ("admin@mova.app", "admin"))
+        is_admin_sender = (sender in admin_aliases)
         user_email = receiver if is_admin_sender else sender
         user_name = m.get("sender_name") if not is_admin_sender else (user_email.split("@")[0] if "@" in user_email else user_email)
 
-        if not user_email or user_email in ("admin@mova.app", "admin"):
+        if not user_email or user_email in admin_aliases:
             continue
 
         if user_email not in user_threads:
@@ -404,9 +502,13 @@ async def db_list_chat_threads() -> List[dict]:
 
         t = user_threads[user_email]
         t["total_messages"] += 1
-        t["last_message_time"] = m.get("created_at")
-        t["last_preview"] = m.get("preview_hint", "🔒 Encrypted Message")
-        t["last_sender_role"] = m.get("sender_role", "user")
+        if (m.get("created_at") or "") >= (t.get("last_message_time") or ""):
+            t["last_message_time"] = m.get("created_at")
+            t["last_preview"] = m.get("preview_hint", "🔒 Encrypted Message")
+            t["last_sender_role"] = m.get("sender_role", "user")
+            if not is_admin_sender and m.get("sender_name"):
+                t["user_name"] = m.get("sender_name")
+
         if not is_admin_sender and not m.get("read", False):
             t["unread_count"] += 1
 
@@ -420,12 +522,12 @@ async def db_mark_chat_read(user_email: str, reader_role: str):
     try:
         if reader_role == "admin":
             await db.chat_messages.update_many(
-                {"sender_email": u_clean, "receiver_email": "admin@mova.app"},
+                {"sender_email": u_clean, "receiver_email": {"$in": ["admin@mova.app", "admin"]}},
                 {"$set": {"read": True}}
             )
         else:
             await db.chat_messages.update_many(
-                {"sender_email": "admin@mova.app", "receiver_email": u_clean},
+                {"sender_email": {"$in": ["admin@mova.app", "admin"]}, "receiver_email": u_clean},
                 {"$set": {"read": True}}
             )
     except Exception as e:
@@ -436,6 +538,7 @@ async def db_mark_chat_read(user_email: str, reader_role: str):
             m["read"] = True
         elif reader_role != "admin" and m.get("receiver_email") == u_clean:
             m["read"] = True
+    _save_chat_file()
 
 
 async def db_insert_activity(doc: dict):
