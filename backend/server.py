@@ -128,53 +128,40 @@ def _seed_initial_chats():
             return base64.b64encode(ct).decode('ascii'), base64.b64encode(iv).decode('ascii')
 
         now = datetime.now(timezone.utc)
-        conversations = [
-            # Thread 1: Aarav Sharma (user@mova.app)
-            [
-                {'sender_id': 'usr-101', 'sender_email': 'user@mova.app', 'sender_name': 'Aarav Sharma', 'sender_role': 'commuter', 'receiver_email': 'admin@mova.app', 'text': 'Hello Admin desk! Is the wheelchair boarding lift operational at Master Canteen for Route 10?', 'delta_mins': 120, 'read': True},
-                {'sender_id': 'usr-admin', 'sender_email': 'admin@mova.app', 'sender_name': 'MOVA Transit Desk', 'sender_role': 'admin', 'receiver_email': 'user@mova.app', 'text': 'Hi Aarav! Yes, CRUT Low-Floor Bus #OD-02-AX-4821 is fitted with hydraulic ramps and is arriving at Bay 3 in 6 minutes.', 'delta_mins': 115, 'read': True},
-                {'sender_id': 'usr-101', 'sender_email': 'user@mova.app', 'sender_name': 'Aarav Sharma', 'sender_role': 'commuter', 'receiver_email': 'admin@mova.app', 'text': 'Thank you so much, I am waiting near the tactile ramp at Bay 3.', 'delta_mins': 110, 'read': True},
-                {'sender_id': 'usr-admin', 'sender_email': 'admin@mova.app', 'sender_name': 'MOVA Transit Desk', 'sender_role': 'admin', 'receiver_email': 'user@mova.app', 'text': 'Driver Rajesh has been notified and will assist you with boarding immediately.', 'delta_mins': 105, 'read': True}
-            ],
-            # Thread 2: Priya Patel (priya@mova.app)
-            [
-                {'sender_id': 'usr-102', 'sender_email': 'priya@mova.app', 'sender_name': 'Priya Patel', 'sender_role': 'commuter', 'receiver_email': 'admin@mova.app', 'text': 'Hi, I need assistance verifying my accessible student concession pass for the upcoming month.', 'delta_mins': 60, 'read': True},
-                {'sender_id': 'usr-admin', 'sender_email': 'admin@mova.app', 'sender_name': 'MOVA Transit Desk', 'sender_role': 'admin', 'receiver_email': 'priya@mova.app', 'text': 'Hello Priya! Your concession pass #PASS-2026-8819 is active and verified for all AC and Non-AC routes through Dec 2026.', 'delta_mins': 55, 'read': True}
-            ],
-            # Thread 3: Rajesh Kumar (rajesh@mova.app)
-            [
-                {'sender_id': 'usr-103', 'sender_email': 'rajesh@mova.app', 'sender_name': 'Rajesh Kumar', 'sender_role': 'commuter', 'receiver_email': 'admin@mova.app', 'text': 'Urgent: Could someone confirm if the night escort shuttle is running tonight from KIIT Campus 6 to Patia?', 'delta_mins': 30, 'read': False}
-            ],
-            # Thread 4: Guest Commuter (guest_88a21f@mova.app)
-            [
-                {'sender_id': 'guest-88a', 'sender_email': 'guest_88a21f@mova.app', 'sender_name': 'Guest Commuter (88a21f)', 'sender_role': 'guest', 'receiver_email': 'admin@mova.app', 'text': 'Hello, where can I find the step-free tactile path near Rasulgarh Square?', 'delta_mins': 15, 'read': False}
-            ]
+        user_inquiries = [
+            # Incoming commuter inquiry 1: Aarav Sharma (user@mova.app)
+            {'sender_id': 'usr-101', 'sender_email': 'user@mova.app', 'sender_name': 'Aarav Sharma', 'sender_role': 'commuter', 'receiver_email': 'admin@mova.app', 'text': 'Hello Admin desk! Is the wheelchair boarding lift operational at Master Canteen for Route 10?', 'delta_mins': 60, 'read': False},
+            # Incoming commuter inquiry 2: Priya Patel (priya@mova.app)
+            {'sender_id': 'usr-102', 'sender_email': 'priya@mova.app', 'sender_name': 'Priya Patel', 'sender_role': 'commuter', 'receiver_email': 'admin@mova.app', 'text': 'Hi, I need assistance verifying my accessible student concession pass for the upcoming month.', 'delta_mins': 45, 'read': False},
+            # Incoming commuter inquiry 3: Rajesh Kumar (rajesh@mova.app)
+            {'sender_id': 'usr-103', 'sender_email': 'rajesh@mova.app', 'sender_name': 'Rajesh Kumar', 'sender_role': 'commuter', 'receiver_email': 'admin@mova.app', 'text': 'Urgent: Could someone confirm if the night escort shuttle is running tonight from KIIT Campus 6 to Patia?', 'delta_mins': 25, 'read': False},
+            # Incoming guest inquiry 4: Guest Commuter (guest_88a21f@mova.app)
+            {'sender_id': 'guest-88a', 'sender_email': 'guest_88a21f@mova.app', 'sender_name': 'Guest Commuter (88a21f)', 'sender_role': 'guest', 'receiver_email': 'admin@mova.app', 'text': 'Hello, where can I find the step-free tactile path near Rasulgarh Square?', 'delta_mins': 10, 'read': False}
         ]
 
         existing_ids = {m.get("id") for m in MEM_CHAT if m.get("id")}
-        for thread in conversations:
-            for item in thread:
-                ct, iv = _enc(item['text'])
-                ts = (now - timedelta(minutes=item['delta_mins'])).isoformat()
-                msg_id = f"msg_{uuid.uuid4().hex[:12]}"
-                msg_doc = {
-                    'id': msg_id,
-                    'sender_id': item['sender_id'],
-                    'sender_email': item['sender_email'],
-                    'sender_name': item['sender_name'],
-                    'sender_role': item['sender_role'],
-                    'receiver_email': item['receiver_email'],
-                    'ciphertext': ct,
-                    'iv': iv,
-                    'algorithm': 'AES-GCM-256',
-                    'message_type': 'text',
-                    'preview_hint': '🔒 Encrypted Message',
-                    'read': item['read'],
-                    'created_at': ts
-                }
-                if msg_id not in existing_ids:
-                    MEM_CHAT.append(msg_doc)
-                    existing_ids.add(msg_id)
+        for item in user_inquiries:
+            ct, iv = _enc(item['text'])
+            ts = (now - timedelta(minutes=item['delta_mins'])).isoformat()
+            msg_id = f"msg_{uuid.uuid4().hex[:12]}"
+            msg_doc = {
+                'id': msg_id,
+                'sender_id': item['sender_id'],
+                'sender_email': item['sender_email'],
+                'sender_name': item['sender_name'],
+                'sender_role': item['sender_role'],
+                'receiver_email': item['receiver_email'],
+                'ciphertext': ct,
+                'iv': iv,
+                'algorithm': 'AES-GCM-256',
+                'message_type': 'text',
+                'preview_hint': '🔒 Encrypted Message',
+                'read': item['read'],
+                'created_at': ts
+            }
+            if msg_id not in existing_ids:
+                MEM_CHAT.append(msg_doc)
+                existing_ids.add(msg_id)
 
         _save_chat_file()
     except Exception as e:
