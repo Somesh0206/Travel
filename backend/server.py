@@ -506,6 +506,55 @@ def generate_usage_csv(logs: List[dict]) -> str:
 
 
 def generate_usage_pdf(logs: List[dict], metrics: dict) -> bytes:
+    if not HAS_REPORTLAB:
+        # Lightweight standard library PDF output fallback
+        content_lines = [
+            "%PDF-1.4",
+            "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
+            "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj",
+            "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj",
+            "5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj",
+        ]
+        text_stream = (
+            "BT /F1 16 Tf 50 790 Td (MOVA Accessible Transit - Daily Usage & Audit Report) Tj ET\n"
+            f"BT /F1 10 Tf 50 770 Td (Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')} - Confidential Admin Audit) Tj ET\n"
+            f"BT /F1 11 Tf 50 740 Td (Total Tracked Events: {metrics.get('total_events', 0)}  |  Active Commuters: {metrics.get('active_users', 0)}  |  Top Feature: {metrics.get('top_feature', 'N/A')}) Tj ET\n"
+        )
+        y = 700
+        text_stream += f"BT /F1 10 Tf 50 {y} Td (Feature Breakdown:) Tj ET\n"
+        y -= 16
+        for f in metrics.get('feature_breakdown', [])[:10]:
+            text_stream += f"BT /F1 9 Tf 60 {y} Td ({f.get('feature_name', '')} [{f.get('feature_category', '')}]: {f.get('count', 0)} uses - {f.get('percentage', 0)}%) Tj ET\n"
+            y -= 14
+        
+        y -= 10
+        text_stream += f"BT /F1 10 Tf 50 {y} Td (Recent Commuter Interactions:) Tj ET\n"
+        y -= 16
+        for l in logs[:15]:
+            safe_email = (l.get('user_email', '')).replace('(', '').replace(')', '')
+            safe_act = (l.get('action_details', '')[:55]).replace('(', '').replace(')', '')
+            text_stream += f"BT /F1 8 Tf 60 {y} Td ({(l.get('timestamp', ''))[:16]} - {safe_email} - {l.get('feature_name', '')}: {safe_act}) Tj ET\n"
+            y -= 13
+            if y < 60:
+                break
+        
+        content_lines.append(f"4 0 obj << /Length {len(text_stream.encode('latin1'))} >> stream\n{text_stream}\nendstream\nendobj")
+        content_lines.extend([
+            "xref",
+            "0 6",
+            "0000000000 65535 f ",
+            "0000000010 00000 n ",
+            "0000000060 00000 n ",
+            "0000000118 00000 n ",
+            "0000000250 00000 n ",
+            "0000000200 00000 n ",
+            "trailer << /Size 6 /Root 1 0 R >>",
+            "startxref",
+            "450",
+            "%%EOF"
+        ])
+        return "\n".join(content_lines).encode("latin1", errors="replace")
+
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=36)
     styles = getSampleStyleSheet()
