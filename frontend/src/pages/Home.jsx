@@ -976,6 +976,26 @@ export default function Home() {
         </DialogContent>
       </Dialog>
 
+      {/* Global Floating Action Button for Encrypted Admin Chat */}
+      <div className="fixed bottom-24 right-6 z-40">
+        <button
+          type="button"
+          onClick={() => setChatOpen(true)}
+          className="group flex items-center gap-2 px-3.5 py-2.5 rounded-full bg-gradient-to-r from-[#00E5FF] to-[#00b4d8] text-black font-bold shadow-2xl shadow-cyan-500/30 border-2 border-white/20 hover:scale-105 active:scale-95 transition-all duration-200"
+          aria-label="Chat with Admin"
+          data-testid="home-chat-admin-btn"
+        >
+          <div className="relative">
+            <MessageSquare size={17} className="text-black" />
+            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full animate-ping border border-black" />
+            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full border border-black" />
+          </div>
+          <span className="text-xs font-bold tracking-wide uppercase font-mono hidden sm:inline">
+            Chat Admin
+          </span>
+        </button>
+      </div>
+
       {/* Global Safety & SOS Overlays */}
       <SOSButton userLoc={userLoc} police={police} onOpenSafety={() => setSafetyOpen(true)} />
       <SafetyCheckInDialog open={safetyOpen} onOpenChange={setSafetyOpen} />
