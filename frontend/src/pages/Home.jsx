@@ -333,44 +333,49 @@ export default function Home() {
               </p>
             </div>
 
-            {/* Quick Launch Shortcuts: Chat with Admin, Driver Portal, Aid & Offline Pack */}
-            <div className="flex flex-wrap gap-2.5 w-full lg:w-auto">
-              <Button
-                onClick={() => setChatOpen(true)}
-                className="pill-btn bg-gradient-to-r from-[#00E5FF] to-[#00b4d8] text-black font-extrabold hover:brightness-110 shadow-lg shadow-[#00E5FF]/30 text-xs sm:text-sm px-4 py-2.5 flex items-center gap-2 border border-white/20"
-                data-testid="hero-chat-admin-btn"
-              >
-                <MessageSquare size={16} className="text-black" />
-                <span>Chat with Admin</span>
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse ml-0.5" />
-              </Button>
-              <Button
-                onClick={() => setAssistOpen(true)}
-                className="pill-btn bg-white/10 hover:bg-white/20 border border-white/10 text-white font-semibold text-xs sm:text-sm"
-              >
-                <Accessibility size={15} className="mr-1.5 text-[#00E5FF]" /> Request Boarding Aid
-              </Button>
-              <Button
-                onClick={() => setReportOpen(true)}
-                variant="outline"
-                className="pill-btn border-white/20 text-xs sm:text-sm"
-              >
-                <Users size={15} className="mr-1.5 text-amber-400" /> Report Crowding
-              </Button>
-              <Button
-                onClick={() => nav("/driver")}
-                variant="outline"
-                className="pill-btn border-[#00E5FF]/40 text-[#00E5FF] hover:bg-[#00E5FF]/10 text-xs sm:text-sm"
-              >
-                <Radio size={14} className="mr-1.5" /> Driver Console
-              </Button>
-              <Button
-                onClick={() => nav("/offline")}
-                variant="outline"
-                className="pill-btn border-white/20 text-xs sm:text-sm"
-              >
-                <WifiOff size={14} className="mr-1.5 text-orange-400" /> Offline Pack
-              </Button>
+            {/* Quick Launch Shortcuts: Boarding Aid, Crowding, Driver Console, Offline Pack, and Chat with Admin */}
+            <div className="flex flex-col gap-2.5 w-full lg:w-auto">
+              <div className="flex flex-wrap gap-2.5">
+                <Button
+                  onClick={() => setAssistOpen(true)}
+                  className="pill-btn bg-[#00E5FF] text-black font-bold hover:bg-[#00b8cc] shadow-lg shadow-[#00E5FF]/20 text-xs sm:text-sm"
+                >
+                  <Accessibility size={15} className="mr-1.5" /> Request Boarding Aid
+                </Button>
+                <Button
+                  onClick={() => setReportOpen(true)}
+                  variant="outline"
+                  className="pill-btn border-white/20 text-xs sm:text-sm"
+                >
+                  <Users size={15} className="mr-1.5 text-amber-400" /> Report Crowding
+                </Button>
+              </div>
+
+              <div className="flex flex-wrap gap-2.5 items-center">
+                <Button
+                  onClick={() => nav("/driver")}
+                  variant="outline"
+                  className="pill-btn border-[#00E5FF]/40 text-[#00E5FF] hover:bg-[#00E5FF]/10 text-xs sm:text-sm"
+                >
+                  <Radio size={14} className="mr-1.5" /> Driver Console
+                </Button>
+                <Button
+                  onClick={() => nav("/offline")}
+                  variant="outline"
+                  className="pill-btn border-white/20 text-xs sm:text-sm"
+                >
+                  <WifiOff size={14} className="mr-1.5 text-orange-400" /> Offline Pack
+                </Button>
+                <Button
+                  onClick={() => setChatOpen(true)}
+                  variant="outline"
+                  className="pill-btn border-[#00E5FF]/50 hover:bg-[#00E5FF]/20 text-[#00E5FF] hover:text-white text-xs sm:text-sm font-semibold flex items-center gap-1.5 shadow-md shadow-[#00E5FF]/15 transition-all"
+                  data-testid="hero-chat-admin-btn"
+                >
+                  <MessageSquare size={14} className="text-[#00E5FF]" /> Chat with Admin
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse ml-0.5" />
+                </Button>
+              </div>
             </div>
           </div>
 
