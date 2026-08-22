@@ -66,6 +66,7 @@ export default function EncryptedChatModal({ isOpen, onClose }) {
       const interval = setInterval(fetchMessages, 3000);
       return () => clearInterval(interval);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, user]);
 
   useEffect(() => {

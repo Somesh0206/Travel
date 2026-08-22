@@ -87,6 +87,7 @@ export default function AdminDashboard() {
     refresh();
     const id = setInterval(refresh, 6000);
     return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -95,6 +96,7 @@ export default function AdminDashboard() {
       const tid = setInterval(() => fetchActiveThreadMessages(selectedUserEmail), 3000);
       return () => clearInterval(tid);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedUserEmail]);
 
   useEffect(() => {
