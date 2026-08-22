@@ -38,6 +38,11 @@ export default function EncryptedChatModal({ isOpen, onClose }) {
     setGuestId(gid);
   }, []);
 
+  const getStorageKey = () => {
+    const ident = user?.email || guestId || localStorage.getItem("mova_guest_id") || "guest";
+    return `mova_chat_${ident}`;
+  };
+
   const getChatHeaders = () => {
     if (user) return {};
     const gid = guestId || localStorage.getItem("mova_guest_id") || "guest_default";
@@ -51,26 +56,75 @@ export default function EncryptedChatModal({ isOpen, onClose }) {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  // Restore cached chat history immediately on mount / identity change
+  useEffect(() => {
+    try {
+      const key = getStorageKey();
+      const cachedMsgs = JSON.parse(localStorage.getItem(key) || "[]");
+      const cachedDecrypted = JSON.parse(localStorage.getItem(key + "_decrypted") || "{}");
+      if (cachedMsgs.length > 0) {
+        setMessages(cachedMsgs);
+      }
+      if (Object.keys(cachedDecrypted).length > 0) {
+        setDecryptedMap(cachedDecrypted);
+      }
+    } catch (e) {
+      console.error("Local chat cache restore failed:", e);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, guestId]);
+
   const fetchMessages = async () => {
     try {
       const res = await api.get("/chat/messages", { headers: getChatHeaders() });
       const rawMsgs = res.data || [];
-      setMessages(rawMsgs);
+      
+      const key = getStorageKey();
+      let cachedMsgs = [];
+      try {
+        cachedMsgs = JSON.parse(localStorage.getItem(key) || "[]");
+      } catch (e) {}
+
+      // Merge unique messages by ID
+      const msgMap = new Map();
+      cachedMsgs.forEach((m) => { if (m?.id) msgMap.set(m.id, m); });
+      rawMsgs.forEach((m) => { if (m?.id) msgMap.set(m.id, m); });
+
+      const mergedList = Array.from(msgMap.values()).sort((a, b) =>
+        (a.created_at || "").localeCompare(b.created_at || "")
+      );
+      setMessages(mergedList);
       setConnectionStatus("🔒 E2EE Secure Node Active");
 
+      try {
+        localStorage.setItem(key, JSON.stringify(mergedList));
+      } catch (e) {}
+
       // Decrypt any new messages
-      const newMap = { ...decryptedMap };
-      for (const m of rawMsgs) {
+      let cachedDecrypted = {};
+      try {
+        cachedDecrypted = JSON.parse(localStorage.getItem(key + "_decrypted") || "{}");
+      } catch (e) {}
+
+      const newMap = { ...cachedDecrypted, ...decryptedMap };
+      let updated = false;
+      for (const m of mergedList) {
         if (!newMap[m.id]) {
           try {
             const plain = await decryptMessage(m.ciphertext, m.iv);
             newMap[m.id] = plain;
+            updated = true;
           } catch (e) {
             newMap[m.id] = "[Decryption Failed]";
           }
         }
       }
-      setDecryptedMap(newMap);
+      if (updated || Object.keys(newMap).length !== Object.keys(decryptedMap).length) {
+        setDecryptedMap(newMap);
+        try {
+          localStorage.setItem(key + "_decrypted", JSON.stringify(newMap));
+        } catch (e) {}
+      }
     } catch (err) {
       console.error("Failed to fetch chat messages:", err);
     }
@@ -78,8 +132,8 @@ export default function EncryptedChatModal({ isOpen, onClose }) {
 
   useEffect(() => {
     if (isOpen) {
-      setLoading(true);
-      fetchMessages().finally(() => setLoading(false));
+      setLoading(false);
+      fetchMessages();
 
       const interval = setInterval(fetchMessages, 3000);
       return () => clearInterval(interval);
@@ -115,13 +169,21 @@ export default function EncryptedChatModal({ isOpen, onClose }) {
       const res = await api.post("/chat/send", payload, { headers: getChatHeaders() });
       const sentMsg = res.data;
 
-      // 3. Immediately store decrypted in local map
-      setDecryptedMap((prev) => ({
-        ...prev,
+      // 3. Immediately store decrypted in local map and localStorage
+      const key = getStorageKey();
+      const updatedMessages = [...messages, sentMsg];
+      const updatedDecrypted = {
+        ...decryptedMap,
         [sentMsg.id]: textToSend.trim()
-      }));
+      };
 
-      setMessages((prev) => [...prev, sentMsg]);
+      try {
+        localStorage.setItem(key, JSON.stringify(updatedMessages));
+        localStorage.setItem(key + "_decrypted", JSON.stringify(updatedDecrypted));
+      } catch (e) {}
+
+      setDecryptedMap(updatedDecrypted);
+      setMessages(updatedMessages);
       setInputVal("");
       scrollToBottom();
     } catch (err) {

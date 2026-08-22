@@ -57,24 +57,68 @@ export default function AdminDashboard() {
 
   const fetchActiveThreadMessages = async (targetEmail) => {
     if (!targetEmail) return;
+    const threadKey = `mova_admin_chat_${targetEmail}`;
+
+    // 1. Immediately restore cached messages if available
+    try {
+      const cached = JSON.parse(localStorage.getItem(threadKey) || "[]");
+      const cachedDecrypted = JSON.parse(localStorage.getItem(threadKey + "_decrypted") || "{}");
+      if (cached.length > 0) {
+        setActiveMessages(cached);
+      }
+      if (Object.keys(cachedDecrypted).length > 0) {
+        setDecryptedMap((prev) => ({ ...cachedDecrypted, ...prev }));
+      }
+    } catch (e) {}
+
     try {
       const res = await api.get(`/chat/messages?with_user=${encodeURIComponent(targetEmail)}`);
       const msgs = res.data || [];
-      setActiveMessages(msgs);
+
+      // Merge unique messages
+      let cached = [];
+      try {
+        cached = JSON.parse(localStorage.getItem(threadKey) || "[]");
+      } catch (e) {}
+
+      const msgMap = new Map();
+      cached.forEach((m) => { if (m?.id) msgMap.set(m.id, m); });
+      msgs.forEach((m) => { if (m?.id) msgMap.set(m.id, m); });
+
+      const mergedList = Array.from(msgMap.values()).sort((a, b) =>
+        (a.created_at || "").localeCompare(b.created_at || "")
+      );
+      setActiveMessages(mergedList);
+
+      try {
+        localStorage.setItem(threadKey, JSON.stringify(mergedList));
+      } catch (e) {}
 
       // Decrypt incoming messages
-      const newMap = { ...decryptedMap };
-      for (const m of msgs) {
+      let cachedDecrypted = {};
+      try {
+        cachedDecrypted = JSON.parse(localStorage.getItem(threadKey + "_decrypted") || "{}");
+      } catch (e) {}
+
+      const newMap = { ...cachedDecrypted, ...decryptedMap };
+      let updated = false;
+      for (const m of mergedList) {
         if (!newMap[m.id]) {
           try {
             const plain = await decryptMessage(m.ciphertext, m.iv);
             newMap[m.id] = plain;
+            updated = true;
           } catch (e) {
             newMap[m.id] = "[Decryption Failed]";
           }
         }
       }
-      setDecryptedMap(newMap);
+      if (updated || Object.keys(newMap).length !== Object.keys(decryptedMap).length) {
+        setDecryptedMap(newMap);
+        try {
+          localStorage.setItem(threadKey + "_decrypted", JSON.stringify(newMap));
+        } catch (e) {}
+      }
 
       // Mark read
       api.post("/chat/mark-read", { with_user: targetEmail }).catch(() => {});
@@ -125,12 +169,20 @@ export default function AdminDashboard() {
       const res = await api.post("/chat/send", payload);
       const sentMsg = res.data;
 
-      setDecryptedMap((prev) => ({
-        ...prev,
+      const threadKey = `mova_admin_chat_${selectedUserEmail}`;
+      const updatedMessages = [...activeMessages, sentMsg];
+      const updatedDecrypted = {
+        ...decryptedMap,
         [sentMsg.id]: textToSend.trim()
-      }));
+      };
 
-      setActiveMessages((prev) => [...prev, sentMsg]);
+      try {
+        localStorage.setItem(threadKey, JSON.stringify(updatedMessages));
+        localStorage.setItem(threadKey + "_decrypted", JSON.stringify(updatedDecrypted));
+      } catch (e) {}
+
+      setDecryptedMap(updatedDecrypted);
+      setActiveMessages(updatedMessages);
       setAdminInput("");
       refresh();
     } catch (err) {

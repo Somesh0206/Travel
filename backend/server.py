@@ -54,6 +54,38 @@ MEM_LOCATIONS = {}    # user_id -> location_dict
 MEM_BUGS = []         # list of bug_dicts
 MEM_CHAT = []         # list of encrypted chat messages
 
+CHAT_FILE_PATH = os.environ.get(
+    "CHAT_FILE_PATH",
+    os.path.join("/tmp" if os.path.exists("/tmp") else os.path.dirname(__file__), "mova_chat_db.json")
+)
+
+
+def _load_chat_file():
+    global MEM_CHAT
+    try:
+        if os.path.exists(CHAT_FILE_PATH):
+            with open(CHAT_FILE_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    existing_ids = {m.get("id") for m in MEM_CHAT if m.get("id")}
+                    for m in data:
+                        if m.get("id") and m.get("id") not in existing_ids:
+                            MEM_CHAT.append(m)
+                            existing_ids.add(m.get("id"))
+    except Exception as e:
+        logger.warning("Could not read chat file: %s", e)
+
+
+def _save_chat_file():
+    try:
+        with open(CHAT_FILE_PATH, "w", encoding="utf-8") as f:
+            json.dump(MEM_CHAT, f)
+    except Exception as e:
+        logger.warning("Could not save chat file: %s", e)
+
+
+_load_chat_file()
+
 
 # ---------- Utils ----------
 def hash_pw(p: str) -> str:
@@ -188,7 +220,9 @@ async def db_list_bugs(query: dict) -> List[dict]:
 
 
 async def db_insert_chat(doc: dict):
-    MEM_CHAT.append(doc)
+    if not any(m.get("id") == doc.get("id") for m in MEM_CHAT):
+        MEM_CHAT.append(doc)
+        _save_chat_file()
     try:
         await db.chat_messages.insert_one(doc.copy())
     except Exception as e:
@@ -211,6 +245,7 @@ async def db_list_chat(user_email: str, admin_email: str = "admin@mova.app") -> 
     except Exception as e:
         logger.warning("DB list chat skipped: %s", e)
 
+    _load_chat_file()
     results = [
         dict(m) for m in MEM_CHAT
         if (m.get("sender_email") == u_clean and m.get("receiver_email") == a_clean) or
@@ -221,6 +256,7 @@ async def db_list_chat(user_email: str, admin_email: str = "admin@mova.app") -> 
 
 
 async def db_list_chat_threads() -> List[dict]:
+    _load_chat_file()
     user_threads = {}
     docs = []
     try:
