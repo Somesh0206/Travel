@@ -1,9 +1,9 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Moon, Sun, LogOut, Bus, ShieldCheck, WifiOff, Bug } from "lucide-react";
+import { Moon, Sun, LogOut, Bus, ShieldCheck, WifiOff, Bug, MessageSquare } from "lucide-react";
 
-export default function Header({ onBug }) {
+export default function Header({ onBug, onChat }) {
   const { user, logout, theme, toggleTheme } = useAuth();
   const nav = useNavigate();
 
@@ -36,6 +36,15 @@ export default function Header({ onBug }) {
           <Link to="/offline" className="px-3 py-1.5 rounded-full hover:bg-white/5 inline-flex items-center gap-1.5" data-testid="nav-offline">
             <WifiOff size={14} /> Offline Schedules
           </Link>
+          {user && (
+            <button
+              onClick={onChat}
+              className="px-3 py-1.5 rounded-full hover:bg-white/5 inline-flex items-center gap-1.5 text-white/90 hover:text-[#00E5FF] transition"
+              data-testid="nav-chat"
+            >
+              <MessageSquare size={14} className="text-[#00E5FF]" /> Live Support
+            </button>
+          )}
           {user && user.role === "admin" && (
             <Link to="/admin" className="px-3 py-1.5 rounded-full hover:bg-white/5 inline-flex items-center gap-1.5" data-testid="nav-admin">
               <ShieldCheck size={14} /> Admin
@@ -49,6 +58,17 @@ export default function Header({ onBug }) {
               <span className="opacity-70">{greeting()},</span>{" "}
               <span className="font-semibold">{user.name.split(" ")[0]}</span>
             </div>
+          )}
+          {user && onChat && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="pill-btn border-[#00E5FF]/40 text-[#00E5FF] hover:bg-[#00E5FF]/10 hidden sm:inline-flex items-center gap-1.5"
+              onClick={onChat}
+              data-testid="header-chat-btn"
+            >
+              <MessageSquare size={14} /> Chat Admin
+            </Button>
           )}
           {user && (
             <Button variant="ghost" size="sm" className="pill-btn" onClick={onBug} data-testid="report-bug-btn">

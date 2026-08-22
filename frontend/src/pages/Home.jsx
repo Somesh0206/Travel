@@ -4,6 +4,7 @@ import MapView from "@/components/MapView";
 import SOSButton from "@/components/SOSButton";
 import SafetyCheckInDialog from "@/components/SafetyCheckInDialog";
 import BugReportDialog from "@/components/BugReportDialog";
+import EncryptedChatModal from "@/components/EncryptedChatModal";
 import VoiceInput from "@/components/VoiceInput";
 import { useAuth } from "@/context/AuthContext";
 import { Card, CardContent } from "@/components/ui/card";
@@ -78,6 +79,7 @@ export default function Home() {
   const [userLoc, setUserLoc] = useState(null);
   const [safetyOpen, setSafetyOpen] = useState(false);
   const [bugOpen, setBugOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   
   // Assistance Request Dialog state (Module 2)
   const [assistOpen, setAssistOpen] = useState(false);
@@ -313,7 +315,7 @@ export default function Home() {
 
   return (
     <div className={`min-h-screen mova-hero-grid text-white ${highContrast ? "contrast-125 bg-black" : ""}`}>
-      <Header />
+      <Header onBug={() => setBugOpen(true)} onChat={() => setChatOpen(true)} />
 
       <main className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
         {/* Top Hero Banner & Accessibility Preset Bar */}
@@ -331,13 +333,19 @@ export default function Home() {
               </p>
             </div>
 
-            {/* Quick Launch Shortcuts: Driver Portal & Offline Pack */}
+            {/* Quick Launch Shortcuts: Driver Portal, Chat Admin & Offline Pack */}
             <div className="flex flex-wrap gap-2.5 w-full lg:w-auto">
               <Button
-                onClick={() => setAssistOpen(true)}
-                className="pill-btn bg-[#00E5FF] text-black font-bold hover:bg-[#00B8CC] shadow-lg shadow-[#00E5FF]/20 text-xs sm:text-sm"
+                onClick={() => setChatOpen(true)}
+                className="pill-btn bg-gradient-to-r from-[#00E5FF] to-[#00b4d8] text-black font-bold hover:brightness-110 shadow-lg shadow-[#00E5FF]/20 text-xs sm:text-sm"
               >
-                <Accessibility size={15} className="mr-1.5" /> Request Boarding Aid
+                <MessageSquare size={15} className="mr-1.5" /> 🔒 Live Support
+              </Button>
+              <Button
+                onClick={() => setAssistOpen(true)}
+                className="pill-btn bg-white/10 hover:bg-white/20 border border-white/10 text-white font-semibold text-xs sm:text-sm"
+              >
+                <Accessibility size={15} className="mr-1.5 text-[#00E5FF]" /> Request Boarding Aid
               </Button>
               <Button
                 onClick={() => setReportOpen(true)}
@@ -972,6 +980,7 @@ export default function Home() {
       <SOSButton userLoc={userLoc} police={police} onOpenSafety={() => setSafetyOpen(true)} />
       <SafetyCheckInDialog open={safetyOpen} onOpenChange={setSafetyOpen} />
       <BugReportDialog open={bugOpen} onOpenChange={setBugOpen} />
+      <EncryptedChatModal isOpen={chatOpen} onClose={() => setChatOpen(false)} />
     </div>
   );
 }

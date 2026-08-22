@@ -52,6 +52,7 @@ MEM_USERS_BY_ID = {}  # id -> user_dict
 MEM_SOS = []          # list of sos_dicts
 MEM_LOCATIONS = {}    # user_id -> location_dict
 MEM_BUGS = []         # list of bug_dicts
+MEM_CHAT = []         # list of encrypted chat messages
 
 
 # ---------- Utils ----------
@@ -186,6 +187,106 @@ async def db_list_bugs(query: dict) -> List[dict]:
     return [dict(b) for b in MEM_BUGS]
 
 
+async def db_insert_chat(doc: dict):
+    MEM_CHAT.append(doc)
+    try:
+        await db.chat_messages.insert_one(doc.copy())
+    except Exception as e:
+        logger.warning("DB chat insert skipped: %s", e)
+
+
+async def db_list_chat(user_email: str, admin_email: str = "admin@mova.app") -> List[dict]:
+    u_clean = (user_email or "").lower().strip()
+    a_clean = (admin_email or "admin@mova.app").lower().strip()
+    try:
+        query = {
+            "$or": [
+                {"sender_email": u_clean, "receiver_email": a_clean},
+                {"sender_email": a_clean, "receiver_email": u_clean},
+            ]
+        }
+        docs = await db.chat_messages.find(query, {"_id": 0}).sort("created_at", 1).to_list(1000)
+        if docs:
+            return docs
+    except Exception as e:
+        logger.warning("DB list chat skipped: %s", e)
+
+    results = [
+        dict(m) for m in MEM_CHAT
+        if (m.get("sender_email") == u_clean and m.get("receiver_email") == a_clean) or
+           (m.get("sender_email") == a_clean and m.get("receiver_email") == u_clean)
+    ]
+    results.sort(key=lambda x: x.get("created_at", ""))
+    return results
+
+
+async def db_list_chat_threads() -> List[dict]:
+    user_threads = {}
+    docs = []
+    try:
+        docs = await db.chat_messages.find({}, {"_id": 0}).sort("created_at", 1).to_list(2000)
+    except Exception:
+        pass
+    if not docs:
+        docs = [dict(m) for m in MEM_CHAT]
+
+    for m in docs:
+        sender = (m.get("sender_email") or "").lower().strip()
+        receiver = (m.get("receiver_email") or "").lower().strip()
+        is_admin_sender = (sender in ("admin@mova.app", "admin"))
+        user_email = receiver if is_admin_sender else sender
+        user_name = m.get("sender_name") if not is_admin_sender else (user_email.split("@")[0] if "@" in user_email else user_email)
+
+        if not user_email or user_email in ("admin@mova.app", "admin"):
+            continue
+
+        if user_email not in user_threads:
+            user_threads[user_email] = {
+                "user_email": user_email,
+                "user_name": user_name or user_email,
+                "unread_count": 0,
+                "total_messages": 0,
+                "last_message_time": m.get("created_at"),
+                "last_preview": m.get("preview_hint", "🔒 Encrypted Message"),
+                "last_sender_role": m.get("sender_role", "user")
+            }
+
+        t = user_threads[user_email]
+        t["total_messages"] += 1
+        t["last_message_time"] = m.get("created_at")
+        t["last_preview"] = m.get("preview_hint", "🔒 Encrypted Message")
+        t["last_sender_role"] = m.get("sender_role", "user")
+        if not is_admin_sender and not m.get("read", False):
+            t["unread_count"] += 1
+
+    threads_list = list(user_threads.values())
+    threads_list.sort(key=lambda x: x.get("last_message_time", ""), reverse=True)
+    return threads_list
+
+
+async def db_mark_chat_read(user_email: str, reader_role: str):
+    u_clean = (user_email or "").lower().strip()
+    try:
+        if reader_role == "admin":
+            await db.chat_messages.update_many(
+                {"sender_email": u_clean, "receiver_email": "admin@mova.app"},
+                {"$set": {"read": True}}
+            )
+        else:
+            await db.chat_messages.update_many(
+                {"sender_email": "admin@mova.app", "receiver_email": u_clean},
+                {"$set": {"read": True}}
+            )
+    except Exception as e:
+        logger.warning("DB mark chat read skipped: %s", e)
+
+    for m in MEM_CHAT:
+        if reader_role == "admin" and m.get("sender_email") == u_clean:
+            m["read"] = True
+        elif reader_role != "admin" and m.get("receiver_email") == u_clean:
+            m["read"] = True
+
+
 async def get_current_user(request: Request) -> dict:
     token = request.cookies.get("access_token")
     if not token:
@@ -275,6 +376,19 @@ class BugReportIn(BaseModel):
 class LocationIn(BaseModel):
     lat: float
     lng: float
+
+
+class ChatMessageIn(BaseModel):
+    ciphertext: str
+    iv: str
+    algorithm: Optional[str] = "AES-GCM-256"
+    receiver_email: Optional[str] = "admin@mova.app"
+    message_type: Optional[str] = "text"
+    preview_hint: Optional[str] = "🔒 Encrypted Message"
+
+
+class MarkReadIn(BaseModel):
+    with_user: str
 
 
 # ---------- Routes ----------
@@ -405,6 +519,59 @@ async def list_bugs(user: dict = Depends(get_current_user)):
     query = {} if user.get("role") == "admin" else {"user_id": user["id"]}
     docs = await db_list_bugs(query)
     return docs
+
+
+# ---------- Encrypted Chat Endpoints ----------
+@api.post("/chat/send")
+async def send_chat_message(body: ChatMessageIn, user: dict = Depends(get_current_user)):
+    receiver = (body.receiver_email or "admin@mova.app").lower().strip()
+    if user.get("role") != "admin":
+        receiver = "admin@mova.app"
+
+    doc = {
+        "id": f"msg_{uuid.uuid4().hex[:12]}",
+        "sender_id": user["id"],
+        "sender_email": user["email"],
+        "sender_name": user.get("name", user["email"]),
+        "sender_role": user.get("role", "passenger"),
+        "receiver_email": receiver,
+        "ciphertext": body.ciphertext,
+        "iv": body.iv,
+        "algorithm": body.algorithm or "AES-GCM-256",
+        "message_type": body.message_type or "text",
+        "preview_hint": body.preview_hint or "🔒 Encrypted Message",
+        "read": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db_insert_chat(doc)
+    doc_copy = dict(doc)
+    doc_copy.pop("_id", None)
+    return doc_copy
+
+
+@api.get("/chat/messages")
+async def get_chat_messages(
+    with_user: Optional[str] = None,
+    user: dict = Depends(get_current_user)
+):
+    if user.get("role") == "admin":
+        target_user = with_user or "passenger@mova.app"
+        messages = await db_list_chat(target_user, "admin@mova.app")
+    else:
+        messages = await db_list_chat(user["email"], "admin@mova.app")
+    return messages
+
+
+@api.get("/chat/threads")
+async def get_chat_threads(user: dict = Depends(require_admin)):
+    threads = await db_list_chat_threads()
+    return threads
+
+
+@api.post("/chat/mark-read")
+async def mark_chat_read(body: MarkReadIn, user: dict = Depends(get_current_user)):
+    await db_mark_chat_read(body.with_user, user.get("role", "passenger"))
+    return {"ok": True}
 
 
 # --------- Static demo data: routes/stops for KIIT & Bhubaneswar ---------
