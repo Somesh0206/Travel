@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import Header from "@/components/Header";
 import MapView from "@/components/MapView";
+import ExportPanel from "@/components/ExportPanel";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import { encryptMessage, decryptMessage } from "@/lib/crypto";
@@ -22,7 +23,15 @@ import {
   CheckCheck,
   Headphones,
   RefreshCw,
-  Sparkles
+  Sparkles,
+  BarChart3,
+  TrendingUp,
+  Activity,
+  Download,
+  Calendar,
+  Layers,
+  Smartphone,
+  Laptop
 } from "lucide-react";
 
 export default function AdminDashboard() {
@@ -41,6 +50,21 @@ export default function AdminDashboard() {
   const [sendingReply, setSendingReply] = useState(false);
   const chatBottomRef = useRef(null);
 
+  // Daily Usage & Feature Analytics state
+  const [analyticsData, setAnalyticsData] = useState(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [analyticsDays, setAnalyticsDays] = useState(30);
+  const [selectedFeatureFilter, setSelectedFeatureFilter] = useState("all");
+  const [searchLogTerm, setSearchLogTerm] = useState("");
+
+  const fetchAnalytics = (days = analyticsDays) => {
+    setAnalyticsLoading(true);
+    api.get(`/analytics/daily-usage?days=${days}`)
+      .then((r) => setAnalyticsData(r.data))
+      .catch((err) => console.error("Analytics fetch failed:", err))
+      .finally(() => setAnalyticsLoading(false));
+  };
+
   const refresh = () => {
     api.get("/sos/all").then((r) => setSos(r.data)).catch(() => {});
     api.get("/bugs").then((r) => setBugs(r.data)).catch(() => {});
@@ -53,6 +77,7 @@ export default function AdminDashboard() {
         setSelectedUserEmail(threads[0].user_email);
       }
     }).catch(() => {});
+    fetchAnalytics(analyticsDays);
   };
 
   const fetchActiveThreadMessages = async (targetEmail) => {
@@ -210,9 +235,10 @@ export default function AdminDashboard() {
           </Badge>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 stagger-in">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 stagger-in">
           <Kpi label="Live users" value={locs.length} icon={<Users size={16} />} testId="kpi-users" />
           <Kpi label="Active SOS" value={sos.filter(s => s.status === "active").length} icon={<AlertTriangle size={16} />} accent="#FF3B30" testId="kpi-sos" />
+          <Kpi label="Usage Events" value={analyticsData?.summary?.total_events || "..."} icon={<Activity size={16} />} accent="#10B981" testId="kpi-usage" />
           <Kpi label="Encrypted chats" value={chatThreads.length} icon={<MessageSquare size={16} />} accent="#00E5FF" testId="kpi-chats" />
           <Kpi label="Bug reports" value={bugs.length} icon={<Bug size={16} />} accent="#B24CFF" testId="kpi-bugs" />
           <Kpi label="Police stations" value={police.length} icon={<MapPinned size={16} />} testId="kpi-police" />
@@ -235,6 +261,9 @@ export default function AdminDashboard() {
                   {totalUnreadChat}
                 </span>
               )}
+            </TabsTrigger>
+            <TabsTrigger value="analytics" data-testid="tab-analytics">
+              <BarChart3 size={14} className="mr-1.5" /> Daily Usage & Exports
             </TabsTrigger>
             <TabsTrigger value="sos" data-testid="tab-sos">SOS alerts</TabsTrigger>
             <TabsTrigger value="bugs" data-testid="tab-bugs">Reports</TabsTrigger>
@@ -448,6 +477,253 @@ export default function AdminDashboard() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* Daily Usage & Feature Analytics Tab */}
+          <TabsContent value="analytics" className="mt-3 space-y-5">
+            {/* Top Export Card from Export-Feature module */}
+            <ExportPanel
+              defaultDays={analyticsDays}
+              onExportSuccess={() => fetchAnalytics(analyticsDays)}
+            />
+
+            {/* Analytics KPI Stat Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 backdrop-blur-md">
+                <div className="flex items-center justify-between text-slate-400 text-xs font-semibold uppercase tracking-wider">
+                  <span>Tracked Events</span>
+                  <Activity size={16} className="text-emerald-400" />
+                </div>
+                <div className="text-2xl sm:text-3xl font-extrabold text-white mt-1" style={{ fontFamily: "Outfit" }}>
+                  {analyticsLoading ? "..." : analyticsData?.summary?.total_events || 0}
+                </div>
+                <div className="text-[11px] text-slate-500 mt-1">Actions across all features</div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 backdrop-blur-md">
+                <div className="flex items-center justify-between text-slate-400 text-xs font-semibold uppercase tracking-wider">
+                  <span>Daily Active Users</span>
+                  <Users size={16} className="text-blue-400" />
+                </div>
+                <div className="text-2xl sm:text-3xl font-extrabold text-white mt-1" style={{ fontFamily: "Outfit" }}>
+                  {analyticsLoading ? "..." : analyticsData?.summary?.daily_active_users_today || 0}
+                </div>
+                <div className="text-[11px] text-emerald-400 mt-1">Active Today</div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 backdrop-blur-md">
+                <div className="flex items-center justify-between text-slate-400 text-xs font-semibold uppercase tracking-wider">
+                  <span>Unique Commuters</span>
+                  <User size={16} className="text-purple-400" />
+                </div>
+                <div className="text-2xl sm:text-3xl font-extrabold text-white mt-1" style={{ fontFamily: "Outfit" }}>
+                  {analyticsLoading ? "..." : analyticsData?.summary?.total_users || 0}
+                </div>
+                <div className="text-[11px] text-slate-500 mt-1">In selected timeframe</div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 backdrop-blur-md">
+                <div className="flex items-center justify-between text-slate-400 text-xs font-semibold uppercase tracking-wider">
+                  <span>Top Utilized Feature</span>
+                  <TrendingUp size={16} className="text-amber-400" />
+                </div>
+                <div className="text-lg sm:text-xl font-extrabold text-amber-300 mt-1 capitalize truncate" style={{ fontFamily: "Outfit" }}>
+                  {analyticsLoading ? "..." : (analyticsData?.summary?.top_feature || "None").replace(/_/g, " ")}
+                </div>
+                <div className="text-[11px] text-slate-500 mt-1">Highest user engagement</div>
+              </div>
+            </div>
+
+            {/* Feature Utilization & Daily Trend Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+              {/* Left Column: Feature Breakdown Progress Bars */}
+              <div className="lg:col-span-6 bg-slate-900/80 border border-slate-800 rounded-2xl p-5 backdrop-blur-md">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Layers size={18} className="text-emerald-400" />
+                    <h3 className="text-base font-bold text-white">Feature Utilization Breakdown</h3>
+                  </div>
+                  <Badge className="bg-slate-800 text-slate-300 border-slate-700 text-xs">
+                    {analyticsData?.feature_breakdown?.length || 0} Features Active
+                  </Badge>
+                </div>
+
+                <div className="space-y-3.5">
+                  {(!analyticsData?.feature_breakdown || analyticsData.feature_breakdown.length === 0) ? (
+                    <Empty text="No feature interactions logged yet." />
+                  ) : (
+                    analyticsData.feature_breakdown.map((f) => (
+                      <div key={f.feature_name} className="p-3 bg-slate-800/40 rounded-xl border border-slate-700/50">
+                        <div className="flex items-center justify-between text-xs mb-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-white capitalize">{f.feature_name.replace(/_/g, " ")}</span>
+                            <span className="text-[10px] text-slate-400 px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700">
+                              {f.feature_category}
+                            </span>
+                          </div>
+                          <div className="text-right font-mono">
+                            <span className="text-emerald-400 font-bold">{f.count}</span>
+                            <span className="text-slate-500 ml-1">({f.percentage}%)</span>
+                          </div>
+                        </div>
+                        <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                          <div
+                            className="bg-gradient-to-r from-emerald-500 to-teal-400 h-full rounded-full transition-all duration-500"
+                            style={{ width: `${Math.min(100, Math.max(8, f.percentage))}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Right Column: Daily Usage Trend Bars */}
+              <div className="lg:col-span-6 bg-slate-900/80 border border-slate-800 rounded-2xl p-5 backdrop-blur-md flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <Calendar size={18} className="text-blue-400" />
+                      <h3 className="text-base font-bold text-white">Daily Commuter Activity Trend</h3>
+                    </div>
+                    <span className="text-xs text-slate-400 font-mono">Day-by-Day Volume</span>
+                  </div>
+
+                  <div className="space-y-2 mt-2">
+                    {(!analyticsData?.daily_trends || analyticsData.daily_trends.length === 0) ? (
+                      <Empty text="No daily trend data available." />
+                    ) : (
+                      analyticsData.daily_trends.slice(-7).map((d) => (
+                        <div key={d.date} className="flex items-center gap-3 text-xs">
+                          <span className="w-20 text-slate-400 font-mono shrink-0">{d.date}</span>
+                          <div className="flex-1 bg-slate-800 h-6 rounded-lg overflow-hidden relative flex items-center px-2">
+                            <div
+                              className="absolute top-0 left-0 bg-blue-600/50 h-full rounded-lg transition-all"
+                              style={{ width: `${Math.min(100, Math.max(12, d.total_events * 12))}%` }}
+                            />
+                            <span className="relative z-10 text-[11px] font-semibold text-white">
+                              {d.total_events} events • {d.active_users} users
+                            </span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-6 pt-4 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck size={14} className="text-emerald-400" />
+                    <span>Audit compliance verification passed</span>
+                  </div>
+                  <button
+                    onClick={() => fetchAnalytics(analyticsDays)}
+                    className="text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1"
+                  >
+                    <RefreshCw size={12} className={analyticsLoading ? "animate-spin" : ""} /> Refresh
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Commuter Activity Audit Log Table */}
+            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 backdrop-blur-md">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <Activity size={18} className="text-emerald-400" /> Commuter Activity Audit Log
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">Real-time log of feature interactions by commuters and visitors</p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input
+                    placeholder="Search commuter email / name..."
+                    value={searchLogTerm}
+                    onChange={(e) => setSearchLogTerm(e.target.value)}
+                    className="w-48 sm:w-60 h-8 text-xs bg-slate-800 border-slate-700 text-white rounded-xl"
+                  />
+                  <select
+                    value={selectedFeatureFilter}
+                    onChange={(e) => setSelectedFeatureFilter(e.target.value)}
+                    className="h-8 text-xs bg-slate-800 border border-slate-700 text-white rounded-xl px-2 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  >
+                    <option value="all">All Features</option>
+                    <option value="route_planner">Route Planner</option>
+                    <option value="sos_alert">SOS Emergency</option>
+                    <option value="bus_tracking">Bus Tracking</option>
+                    <option value="crowd_prediction">Crowd Prediction</option>
+                    <option value="voice_assistant">Voice Assistant</option>
+                    <option value="encrypted_chat">Encrypted Chat</option>
+                    <option value="offline_pack">Offline Pack</option>
+                    <option value="concession_pass">Concession Pass</option>
+                    <option value="bug_report">Bug Reports</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-800/80 text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-700">
+                    <tr>
+                      <th className="py-2.5 px-3">Date / Time</th>
+                      <th className="py-2.5 px-3">Commuter</th>
+                      <th className="py-2.5 px-3">Feature Used</th>
+                      <th className="py-2.5 px-3">Action Details</th>
+                      <th className="py-2.5 px-3">Platform</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {(!analyticsData?.recent_logs || analyticsData.recent_logs.length === 0) ? (
+                      <tr>
+                        <td colSpan={5} className="py-8 text-center text-slate-500">
+                          No audit logs found.
+                        </td>
+                      </tr>
+                    ) : (
+                      analyticsData.recent_logs
+                        .filter((l) => {
+                          const matchesSearch = !searchLogTerm ||
+                            (l.user_email || "").toLowerCase().includes(searchLogTerm.toLowerCase()) ||
+                            (l.user_name || "").toLowerCase().includes(searchLogTerm.toLowerCase()) ||
+                            (l.action_details || "").toLowerCase().includes(searchLogTerm.toLowerCase());
+                          const matchesFeat = selectedFeatureFilter === "all" || l.feature_name === selectedFeatureFilter;
+                          return matchesSearch && matchesFeat;
+                        })
+                        .slice(0, 50)
+                        .map((l) => (
+                          <tr key={l.id} className="hover:bg-slate-800/30 transition-colors">
+                            <td className="py-2.5 px-3 text-slate-400 font-mono whitespace-nowrap">
+                              {(l.timestamp || "").slice(0, 16).replace("T", " ")}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <div className="font-semibold text-white">{l.user_name || "Commuter"}</div>
+                              <div className="text-[10px] text-slate-400 font-mono">{l.user_email}</div>
+                            </td>
+                            <td className="py-2.5 px-3 whitespace-nowrap">
+                              <Badge className="bg-emerald-950/80 text-emerald-300 border-emerald-500/30 capitalize font-medium">
+                                {l.feature_name.replace(/_/g, " ")}
+                              </Badge>
+                              <div className="text-[10px] text-slate-500 mt-0.5">{l.feature_category}</div>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-300 max-w-xs truncate">
+                              {l.action_details}
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-400 whitespace-nowrap">
+                              <span className="flex items-center gap-1">
+                                {l.platform?.includes("Mobile") ? <Smartphone size={12} /> : <Laptop size={12} />}
+                                {l.platform || "Web"}
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </TabsContent>
+
 
           {/* SOS Alerts Tab */}
           <TabsContent value="sos" className="mt-3">

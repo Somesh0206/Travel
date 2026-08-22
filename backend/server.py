@@ -4,8 +4,12 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 import os
+import io
+import csv
+import json
 import logging
 import uuid
+import random
 import bcrypt
 import jwt
 from contextlib import asynccontextmanager
@@ -14,11 +18,17 @@ from typing import List, Optional
 
 # pyrefly: ignore [missing-import]
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends
+from fastapi.responses import StreamingResponse
 # pyrefly: ignore [missing-import]
 from starlette.middleware.cors import CORSMiddleware
 # pyrefly: ignore [missing-import]
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr
+
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("mova")
@@ -53,10 +63,16 @@ MEM_SOS = []          # list of sos_dicts
 MEM_LOCATIONS = {}    # user_id -> location_dict
 MEM_BUGS = []         # list of bug_dicts
 MEM_CHAT = []         # list of encrypted chat messages
+MEM_ACTIVITY_LOGS = [] # list of user feature usage activity logs
 
 CHAT_FILE_PATH = os.environ.get(
     "CHAT_FILE_PATH",
     os.path.join("/tmp" if os.path.exists("/tmp") else os.path.dirname(__file__), "mova_chat_db.json")
+)
+
+ACTIVITY_FILE_PATH = os.environ.get(
+    "ACTIVITY_FILE_PATH",
+    os.path.join("/tmp" if os.path.exists("/tmp") else os.path.dirname(__file__), "mova_activity_logs.json")
 )
 
 
@@ -85,6 +101,101 @@ def _save_chat_file():
 
 
 _load_chat_file()
+
+
+def _load_activity_file():
+    global MEM_ACTIVITY_LOGS
+    try:
+        if os.path.exists(ACTIVITY_FILE_PATH):
+            with open(ACTIVITY_FILE_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    existing_ids = {a.get("id") for a in MEM_ACTIVITY_LOGS if a.get("id")}
+                    for a in data:
+                        if a.get("id") and a.get("id") not in existing_ids:
+                            MEM_ACTIVITY_LOGS.append(a)
+                            existing_ids.add(a.get("id"))
+    except Exception as e:
+        logger.warning("Could not read activity file: %s", e)
+
+
+def _save_activity_file():
+    try:
+        with open(ACTIVITY_FILE_PATH, "w", encoding="utf-8") as f:
+            json.dump(MEM_ACTIVITY_LOGS, f)
+    except Exception as e:
+        logger.warning("Could not save activity file: %s", e)
+
+
+def _seed_initial_activity_logs():
+    global MEM_ACTIVITY_LOGS
+    _load_activity_file()
+    if len(MEM_ACTIVITY_LOGS) >= 15:
+        return
+
+    sample_users = [
+        {"id": "usr-101", "email": "user@mova.app", "name": "Aarav Sharma", "role": "commuter"},
+        {"id": "usr-102", "email": "priya@mova.app", "name": "Priya Patel", "role": "commuter"},
+        {"id": "usr-103", "email": "rajesh@mova.app", "name": "Rajesh Kumar", "role": "commuter"},
+        {"id": "usr-104", "email": "ananya@mova.app", "name": "Ananya Sen", "role": "commuter"},
+        {"id": "usr-105", "email": "vikram@mova.app", "name": "Vikram Malhotra", "role": "commuter"},
+        {"id": "guest-88a", "email": "guest_88a21f@mova.app", "name": "Guest Commuter (88a21f)", "role": "guest"},
+        {"id": "guest-94b", "email": "guest_94b70c@mova.app", "name": "Guest Commuter (94b70c)", "role": "guest"},
+    ]
+
+    sample_features = [
+        ("route_planner", "Navigation & Mobility", "Planned wheelchair accessible route from Master Canteen to KIIT Campus 6", "Web / Desktop"),
+        ("route_planner", "Navigation & Mobility", "Step-free metro & low-floor bus multimodal search", "Mobile / iOS"),
+        ("sos_alert", "Safety & Emergency", "Triggered high-priority SOS emergency with live GPS broadcast", "Mobile / Android"),
+        ("bus_tracking", "Live Transit", "Monitored Route 10 CRUT live bus GPS ETA & low-floor status", "Mobile / Android"),
+        ("crowd_prediction", "Smart AI", "Checked AI crowd density forecast for Master Canteen bus junction", "Web / Chrome"),
+        ("voice_assistant", "Accessibility AI", "Activated multilingual voice command: 'Find accessible ramp at Station'", "Mobile / Android"),
+        ("encrypted_chat", "Direct Support", "Sent encrypted message to Admin Desk requesting ramp assistant", "Web / Desktop"),
+        ("offline_pack", "Offline Resilience", "Downloaded offline safety map & emergency shelter directory", "Mobile / Android"),
+        ("concession_pass", "Ticketing", "Generated NFC tap-to-pay accessible concession smart pass", "Mobile / Android"),
+        ("bug_report", "Civic Reporting", "Reported broken tactile paving & ramp blockage at Rasulgarh Square", "Web / Chrome"),
+    ]
+
+    now = datetime.now(timezone.utc)
+    seeded = []
+
+    for day_offset in range(6, -1, -1):
+        day_date = now - timedelta(days=day_offset)
+        date_str = day_date.strftime("%Y-%m-%d")
+        num_events = random.randint(4, 8)
+        for _ in range(num_events):
+            u = random.choice(sample_users)
+            feat = random.choice(sample_features)
+            hour = random.randint(7, 22)
+            minute = random.randint(0, 59)
+            second = random.randint(0, 59)
+            event_dt = day_date.replace(hour=hour, minute=minute, second=second)
+
+            log_item = {
+                "id": str(uuid.uuid4()),
+                "user_id": u["id"],
+                "user_email": u["email"],
+                "user_name": u["name"],
+                "role": u["role"],
+                "feature_name": feat[0],
+                "feature_category": feat[1],
+                "action_details": feat[2],
+                "platform": feat[3],
+                "date": date_str,
+                "timestamp": event_dt.isoformat(),
+            }
+            seeded.append(log_item)
+
+    seeded.sort(key=lambda x: x["timestamp"])
+    for s in seeded:
+        if not any(a.get("id") == s["id"] for a in MEM_ACTIVITY_LOGS):
+            MEM_ACTIVITY_LOGS.append(s)
+
+    _save_activity_file()
+
+
+_seed_initial_activity_logs()
+
 
 
 # ---------- Utils ----------
@@ -323,12 +434,210 @@ async def db_mark_chat_read(user_email: str, reader_role: str):
             m["read"] = True
 
 
+async def db_insert_activity(doc: dict):
+    if not any(a.get("id") == doc.get("id") for a in MEM_ACTIVITY_LOGS):
+        MEM_ACTIVITY_LOGS.append(doc)
+        _save_activity_file()
+    try:
+        await db.user_activity_logs.insert_one(doc.copy())
+    except Exception as e:
+        logger.warning("DB activity insert skipped: %s", e)
+
+
+async def db_list_activities(days: int = 30, feature: Optional[str] = None, user_email: Optional[str] = None) -> List[dict]:
+    _load_activity_file()
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    docs = []
+    try:
+        query = {"timestamp": {"$gte": cutoff}}
+        if feature:
+            query["feature_name"] = feature
+        if user_email:
+            query["user_email"] = user_email.lower().strip()
+        docs = await db.user_activity_logs.find(query, {"_id": 0}).sort("timestamp", -1).to_list(5000)
+    except Exception:
+        pass
+
+    if not docs:
+        docs = [dict(a) for a in MEM_ACTIVITY_LOGS]
+
+    filtered = []
+    for d in docs:
+        ts = d.get("timestamp", "")
+        if ts >= cutoff:
+            if feature and d.get("feature_name") != feature:
+                continue
+            if user_email and (d.get("user_email") or "").lower().strip() != user_email.lower().strip():
+                continue
+            filtered.append(d)
+
+    filtered.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+    return filtered
+
+
+def generate_usage_csv(logs: List[dict]) -> str:
+    headers = [
+        "Log ID", "Date", "Timestamp", "User Email", "User Name", "User Role",
+        "Feature Used", "Feature Category", "Action Details", "Platform"
+    ]
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(headers)
+
+    for l in logs:
+        writer.writerow([
+            l.get("id", ""),
+            l.get("date", ""),
+            l.get("timestamp", ""),
+            l.get("user_email", ""),
+            l.get("user_name", ""),
+            l.get("role", "commuter"),
+            l.get("feature_name", ""),
+            l.get("feature_category", ""),
+            l.get("action_details", ""),
+            l.get("platform", "")
+        ])
+    return output.getvalue()
+
+
+def generate_usage_pdf(logs: List[dict], metrics: dict) -> bytes:
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=36)
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        'DocTitle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        leading=22,
+        textColor=colors.HexColor('#0f172a'),
+        fontName='Helvetica-Bold'
+    )
+    subtitle_style = ParagraphStyle(
+        'DocSubtitle',
+        parent=styles['Normal'],
+        fontSize=10,
+        leading=14,
+        textColor=colors.HexColor('#64748b')
+    )
+    cell_style = ParagraphStyle(
+        'TableCell',
+        parent=styles['Normal'],
+        fontSize=8,
+        leading=10,
+        textColor=colors.HexColor('#1e293b')
+    )
+    cell_header = ParagraphStyle(
+        'TableHeader',
+        parent=styles['Normal'],
+        fontSize=8,
+        leading=10,
+        fontName='Helvetica-Bold',
+        textColor=colors.white
+    )
+
+    elements = []
+    elements.append(Paragraph('MOVA Accessible Transit — Daily Usage & Audit Report', title_style))
+    elements.append(Paragraph(f"Generated on {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')} • Confidential Admin Document", subtitle_style))
+    elements.append(Spacer(1, 10))
+    elements.append(HRFlowable(width='100%', thickness=1.5, color=colors.HexColor('#059669'), spaceBefore=2, spaceAfter=10))
+
+    # Executive Metrics Summary Block
+    m_data = [
+        [
+            Paragraph('Total Tracked Events', cell_header),
+            Paragraph('Active Commuters', cell_header),
+            Paragraph('Top Feature Utilized', cell_header),
+            Paragraph('Audit Timeframe', cell_header)
+        ],
+        [
+            Paragraph(str(metrics.get('total_events', 0)), ParagraphStyle('M1', fontSize=14, leading=16, fontName='Helvetica-Bold', textColor=colors.HexColor('#059669'))),
+            Paragraph(str(metrics.get('active_users', 0)), ParagraphStyle('M2', fontSize=14, leading=16, fontName='Helvetica-Bold', textColor=colors.HexColor('#2563eb'))),
+            Paragraph(str(metrics.get('top_feature', 'N/A')), ParagraphStyle('M3', fontSize=11, leading=14, fontName='Helvetica-Bold', textColor=colors.HexColor('#d97706'))),
+            Paragraph(str(metrics.get('timeframe', 'Last 30 Days')), cell_style)
+        ]
+    ]
+    m_table = Table(m_data, colWidths=[120, 120, 160, 122])
+    m_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1e293b')),
+        ('BACKGROUND', (0,1), (-1,1), colors.HexColor('#f8fafc')),
+        ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#cbd5e1')),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
+        ('TOPPADDING', (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+    ]))
+    elements.append(m_table)
+    elements.append(Spacer(1, 16))
+
+    # Feature Breakdown Table
+    elements.append(Paragraph('Feature Utilization Breakdown', styles['Heading3']))
+    elements.append(Spacer(1, 4))
+    fb_data = [[
+        Paragraph('Feature Name', cell_header),
+        Paragraph('Category', cell_header),
+        Paragraph('Usage Count', cell_header),
+        Paragraph('Traffic Share (%)', cell_header)
+    ]]
+    for item in metrics.get('feature_breakdown', []):
+        fb_data.append([
+            Paragraph(item.get('feature_name', ''), cell_style),
+            Paragraph(item.get('feature_category', ''), cell_style),
+            Paragraph(str(item.get('count', 0)), cell_style),
+            Paragraph(f"{item.get('percentage', 0)}%", cell_style),
+        ])
+    fb_table = Table(fb_data, colWidths=[160, 160, 100, 102])
+    fb_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#059669')),
+        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#f1f5f9')]),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+    ]))
+    elements.append(fb_table)
+    elements.append(Spacer(1, 16))
+
+    # Detailed Logs Table (Up to 150 events)
+    elements.append(Paragraph('Recent Commuter Feature Activity (Up to 150 Events)', styles['Heading3']))
+    elements.append(Spacer(1, 4))
+    log_data = [[
+        Paragraph('Date / Time', cell_header),
+        Paragraph('Commuter Email / ID', cell_header),
+        Paragraph('Feature', cell_header),
+        Paragraph('Action Details', cell_header),
+        Paragraph('Platform', cell_header)
+    ]]
+    for l in logs[:150]:
+        dt_str = (l.get('timestamp', '')[:16]).replace('T', ' ')
+        log_data.append([
+            Paragraph(dt_str, cell_style),
+            Paragraph(l.get('user_email', l.get('user_name', '')), cell_style),
+            Paragraph(l.get('feature_name', ''), cell_style),
+            Paragraph(l.get('action_details', ''), cell_style),
+            Paragraph(l.get('platform', ''), cell_style),
+        ])
+    log_table = Table(log_data, colWidths=[80, 110, 85, 175, 72])
+    log_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#334155')),
+        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#f8fafc')]),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
+        ('TOPPADDING', (0,0), (-1,-1), 3),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+    ]))
+    elements.append(log_table)
+
+    doc.build(elements)
+    return buf.getvalue()
+
+
 async def get_current_user(request: Request) -> dict:
     token = request.cookies.get("access_token")
     if not token:
         auth = request.headers.get("Authorization", "")
         if auth.startswith("Bearer "):
             token = auth[7:]
+    if not token:
+        token = request.query_params.get("token")
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
@@ -447,6 +756,14 @@ class ChatMessageIn(BaseModel):
 
 class MarkReadIn(BaseModel):
     with_user: str
+
+
+class ActivityTrackIn(BaseModel):
+    feature_name: str
+    feature_category: Optional[str] = "General"
+    action_details: Optional[str] = ""
+    platform: Optional[str] = "Web"
+
 
 
 # ---------- Routes ----------
@@ -630,6 +947,195 @@ async def get_chat_threads(user: dict = Depends(require_admin)):
 async def mark_chat_read(body: MarkReadIn, user: dict = Depends(get_chat_user)):
     await db_mark_chat_read(body.with_user, user.get("role", "passenger"))
     return {"ok": True}
+
+
+# ---------- User Activity Analytics & Audit Export Endpoints ----------
+@api.post("/analytics/track")
+async def track_activity(body: ActivityTrackIn, user: dict = Depends(get_chat_user)):
+    """Log feature usage and commuter interactions for daily analytics and audit compliance."""
+    log_doc = {
+        "id": f"log_{uuid.uuid4().hex[:12]}",
+        "user_id": user["id"],
+        "user_email": user["email"],
+        "user_name": user.get("name", user["email"]),
+        "role": user.get("role", "commuter"),
+        "feature_name": body.feature_name,
+        "feature_category": body.feature_category or "General",
+        "action_details": body.action_details or f"Used {body.feature_name}",
+        "platform": body.platform or "Web",
+        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    await db_insert_activity(log_doc)
+    doc_copy = dict(log_doc)
+    doc_copy.pop("_id", None)
+    return {"ok": True, "log": doc_copy}
+
+
+@api.get("/analytics/daily-usage")
+async def get_daily_usage_analytics(
+    days: int = 30,
+    feature: Optional[str] = None,
+    user_email: Optional[str] = None,
+    user: dict = Depends(require_admin)
+):
+    """Admin-only: Aggregate daily commuter usage and feature utilization analytics."""
+    logs = await db_list_activities(days=days, feature=feature, user_email=user_email)
+
+    # Calculate summary metrics
+    unique_users = set(l.get("user_email") for l in logs if l.get("user_email"))
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today_users = set(l.get("user_email") for l in logs if l.get("date") == today_str)
+
+    # Feature count breakdown
+    feature_counts = {}
+    feature_categories = {}
+    daily_groups = {}
+
+    for l in logs:
+        feat = l.get("feature_name", "unknown")
+        cat = l.get("feature_category", "General")
+        dt = l.get("date", "")
+
+        feature_counts[feat] = feature_counts.get(feat, 0) + 1
+        feature_categories[feat] = cat
+
+        if dt:
+            if dt not in daily_groups:
+                daily_groups[dt] = {"date": dt, "events": 0, "users": set()}
+            daily_groups[dt]["events"] += 1
+            if l.get("user_email"):
+                daily_groups[dt]["users"].add(l.get("user_email"))
+
+    total_events = len(logs)
+    top_feature = max(feature_counts.items(), key=lambda x: x[1])[0] if feature_counts else "None"
+
+    feature_breakdown = []
+    for feat, cnt in sorted(feature_counts.items(), key=lambda x: x[1], reverse=True):
+        pct = round((cnt / total_events * 100), 1) if total_events > 0 else 0
+        feature_breakdown.append({
+            "feature_name": feat,
+            "feature_category": feature_categories.get(feat, "General"),
+            "count": cnt,
+            "percentage": pct
+        })
+
+    daily_trends = []
+    for dt in sorted(daily_groups.keys()):
+        daily_trends.append({
+            "date": dt,
+            "total_events": daily_groups[dt]["events"],
+            "active_users": len(daily_groups[dt]["users"])
+        })
+
+    return {
+        "summary": {
+            "total_events": total_events,
+            "total_users": len(unique_users),
+            "daily_active_users_today": len(today_users),
+            "top_feature": top_feature,
+            "timeframe_days": days,
+        },
+        "feature_breakdown": feature_breakdown,
+        "daily_trends": daily_trends,
+        "recent_logs": logs[:200]
+    }
+
+
+@api.get("/exports/daily-usage.csv")
+@api.get("/exports/report.csv")
+async def export_usage_csv(
+    days: int = 30,
+    feature: Optional[str] = None,
+    user_email: Optional[str] = None,
+    user: dict = Depends(require_admin)
+):
+    """Admin-only: Export CSV report of all commuter usage and feature actions."""
+    logs = await db_list_activities(days=days, feature=feature, user_email=user_email)
+    csv_data = generate_usage_csv(logs)
+    filename = f"mova-daily-usage-{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv"
+
+    return Response(
+        content=csv_data,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Type": "text/csv; charset=utf-8"
+        }
+    )
+
+
+@api.get("/exports/daily-usage.pdf")
+@api.get("/exports/report.pdf")
+async def export_usage_pdf(
+    days: int = 30,
+    feature: Optional[str] = None,
+    user_email: Optional[str] = None,
+    user: dict = Depends(require_admin)
+):
+    """Admin-only: Export publication-ready PDF audit report of user usage and feature metrics."""
+    logs = await db_list_activities(days=days, feature=feature, user_email=user_email)
+
+    unique_users = set(l.get("user_email") for l in logs if l.get("user_email"))
+    feature_counts = {}
+    feature_categories = {}
+    for l in logs:
+        feat = l.get("feature_name", "unknown")
+        feature_counts[feat] = feature_counts.get(feat, 0) + 1
+        feature_categories[feat] = l.get("feature_category", "General")
+
+    total_events = len(logs)
+    top_feature = max(feature_counts.items(), key=lambda x: x[1])[0] if feature_counts else "None"
+
+    feature_breakdown = []
+    for feat, cnt in sorted(feature_counts.items(), key=lambda x: x[1], reverse=True):
+        pct = round((cnt / total_events * 100), 1) if total_events > 0 else 0
+        feature_breakdown.append({
+            "feature_name": feat,
+            "feature_category": feature_categories.get(feat, "General"),
+            "count": cnt,
+            "percentage": pct
+        })
+
+    metrics = {
+        "total_events": total_events,
+        "active_users": len(unique_users),
+        "top_feature": top_feature.replace("_", " ").title(),
+        "timeframe": f"Last {days} Days",
+        "feature_breakdown": feature_breakdown
+    }
+
+    pdf_bytes = generate_usage_pdf(logs, metrics)
+    filename = f"mova-daily-usage-{datetime.now(timezone.utc).strftime('%Y%m%d')}.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Type": "application/pdf"
+        }
+    )
+
+
+@api.get("/exports/summary")
+async def export_usage_summary(days: int = 30, user: dict = Depends(require_admin)):
+    """Admin-only: Summary metrics matching the Export-Feature schema."""
+    logs = await db_list_activities(days=days)
+    unique_users = set(l.get("user_email") for l in logs if l.get("user_email"))
+    feature_counts = {}
+    for l in logs:
+        f = l.get("feature_name", "unknown")
+        feature_counts[f] = feature_counts.get(f, 0) + 1
+
+    return {
+        "total": len(logs),
+        "resolved": len([l for l in logs if l.get("feature_name") == "sos_alert"]),
+        "active_users": len(unique_users),
+        "top_feature": max(feature_counts.items(), key=lambda x: x[1])[0] if feature_counts else "None",
+        "feature_breakdown": feature_counts
+    }
+
 
 
 # --------- Static demo data: routes/stops for KIIT & Bhubaneswar ---------

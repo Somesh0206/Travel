@@ -15,6 +15,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
+import { trackFeature } from "@/services/analytics";
 import { toast } from "sonner";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -360,14 +361,20 @@ export default function Home() {
                   <Radio size={14} className="mr-1.5" /> Driver Console
                 </Button>
                 <Button
-                  onClick={() => nav("/offline")}
+                  onClick={() => {
+                    trackFeature("offline_pack", "Offline Resilience", "Opened offline transit pack and safety directory");
+                    nav("/offline");
+                  }}
                   variant="outline"
                   className="pill-btn border-white/20 text-xs sm:text-sm"
                 >
                   <WifiOff size={14} className="mr-1.5 text-orange-400" /> Offline Pack
                 </Button>
                 <Button
-                  onClick={() => setChatOpen(true)}
+                  onClick={() => {
+                    trackFeature("encrypted_chat", "Direct Support", "Opened encrypted admin live dispatch chat");
+                    setChatOpen(true);
+                  }}
                   variant="outline"
                   className="pill-btn border-[#00E5FF]/50 hover:bg-[#00E5FF]/20 text-[#00E5FF] hover:text-white text-xs sm:text-sm font-semibold flex items-center gap-1.5 shadow-md shadow-[#00E5FF]/15 transition-all"
                   data-testid="hero-chat-admin-btn"

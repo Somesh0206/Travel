@@ -357,8 +357,91 @@ def test_guest_chat_flow(admin):
 
 
 
+# ---------- User Activity Analytics & Audit Exports ----------
+def test_activity_tracking_flow(user):
+    headers_user, u = user
+
+    # Commuter logs feature activity
+    r = client.post("/api/analytics/track", json={
+        "feature_name": "route_planner",
+        "feature_category": "Navigation & Mobility",
+        "action_details": "Searched accessible wheelchair route from Campus 3 to Campus 15",
+        "platform": "Web"
+    }, headers=headers_user)
+    assert r.status_code == 200, r.text
+    log = r.json()["log"]
+    assert log["user_email"] == u["email"]
+    assert log["feature_name"] == "route_planner"
+
+    # Guest commuter logs feature activity
+    guest_gid = f"guest_{uuid.uuid4().hex[:6]}"
+    guest_headers = {
+        "X-Guest-ID": guest_gid,
+        "X-Guest-Name": "Guest Commuter X"
+    }
+    r_guest = client.post("/api/analytics/track", json={
+        "feature_name": "offline_pack",
+        "feature_category": "Offline Resilience",
+        "action_details": "Downloaded emergency safety shelter directory",
+        "platform": "Mobile"
+    }, headers=guest_headers)
+    assert r_guest.status_code == 200
+    guest_log = r_guest.json()["log"]
+    assert guest_gid in guest_log["user_id"]
+
+
+def test_admin_daily_usage_analytics(admin, user):
+    headers_admin, _ = admin
+    headers_user, _ = user
+
+    # Admin accesses daily usage analytics
+    r_admin = client.get("/api/analytics/daily-usage?days=30", headers=headers_admin)
+    assert r_admin.status_code == 200
+    data = r_admin.json()
+    assert "summary" in data
+    assert "feature_breakdown" in data
+    assert "daily_trends" in data
+    assert "recent_logs" in data
+    assert data["summary"]["total_events"] >= 1
+
+    # Regular commuter is blocked (403 Forbidden)
+    r_forbidden = client.get("/api/analytics/daily-usage", headers=headers_user)
+    assert r_forbidden.status_code == 403
+
+
+def test_export_csv_and_pdf_reports(admin, user):
+    headers_admin, _ = admin
+    headers_user, _ = user
+
+    # 1. Admin CSV Export
+    r_csv = client.get("/api/exports/daily-usage.csv?days=30", headers=headers_admin)
+    assert r_csv.status_code == 200
+    assert "text/csv" in r_csv.headers["content-type"]
+    assert "Log ID,Date,Timestamp,User Email" in r_csv.text
+
+    # Alias /api/exports/report.csv
+    r_csv_alias = client.get("/api/exports/report.csv", headers=headers_admin)
+    assert r_csv_alias.status_code == 200
+
+    # 2. Admin PDF Export
+    r_pdf = client.get("/api/exports/daily-usage.pdf?days=30", headers=headers_admin)
+    assert r_pdf.status_code == 200
+    assert "application/pdf" in r_pdf.headers["content-type"]
+    assert r_pdf.content.startswith(b"%PDF-")
+
+    # Alias /api/exports/report.pdf
+    r_pdf_alias = client.get("/api/exports/report.pdf", headers=headers_admin)
+    assert r_pdf_alias.status_code == 200
+    assert r_pdf_alias.content.startswith(b"%PDF-")
+
+    # 3. Non-admin commuter is blocked from downloading reports
+    assert client.get("/api/exports/daily-usage.csv", headers=headers_user).status_code == 403
+    assert client.get("/api/exports/daily-usage.pdf", headers=headers_user).status_code == 403
+
+
 # ---------- Logout ----------
 def test_logout(user):
     headers_user, _ = user
     r = client.post("/api/auth/logout", headers=headers_user)
     assert r.status_code == 200
+
